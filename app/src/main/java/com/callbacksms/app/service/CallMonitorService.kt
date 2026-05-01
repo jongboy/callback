@@ -39,16 +39,23 @@ class CallMonitorService : Service() {
     private var previousState = TelephonyManager.CALL_STATE_IDLE
     private var isOutgoingCall = false
     private var callStartTime = 0L
+    private var savedIncomingNumber: String? = null  // 수신 번호 저장 (부재중/수신 후 사용)
 
     @RequiresApi(Build.VERSION_CODES.S)
     private val telephonyCallback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-        override fun onCallStateChanged(state: Int) = handleStateChange(state)
+        override fun onCallStateChanged(state: Int) = handleStateChange(state, null)
     }
 
     @Suppress("DEPRECATION")
     private val legacyListener = object : PhoneStateListener() {
         @Deprecated("Deprecated in Java")
-        override fun onCallStateChanged(state: Int, phoneNumber: String?) = handleStateChange(state)
+        override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+            // 수신 전화 번호를 미리 저장 (부재중/수신 후에 활용)
+            if (state == TelephonyManager.CALL_STATE_RINGING && !phoneNumber.isNullOrEmpty()) {
+                savedIncomingNumber = phoneNumber
+            }
+            handleStateChange(state, phoneNumber)
+        }
     }
 
     override fun onCreate() {
@@ -90,17 +97,19 @@ class CallMonitorService : Service() {
         }
     }
 
-    private fun handleStateChange(state: Int) {
+    private fun handleStateChange(state: Int, phoneNumber: String?) {
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 isOutgoingCall = false
+                // Android 12+에서는 phoneNumber가 null일 수 있음 → call log에서 조회
+                if (!phoneNumber.isNullOrEmpty()) savedIncomingNumber = phoneNumber
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
                 if (previousState == TelephonyManager.CALL_STATE_IDLE) {
                     isOutgoingCall = true
                     callStartTime = System.currentTimeMillis()
                 } else if (previousState == TelephonyManager.CALL_STATE_RINGING) {
-                    isOutgoingCall = false
+                    isOutgoingCall = false  // 수신 전화 받음
                     callStartTime = System.currentTimeMillis()
                 }
             }
@@ -111,17 +120,25 @@ class CallMonitorService : Service() {
                     ((System.currentTimeMillis() - callStartTime) / 1000).toInt() else 0
                 callStartTime = 0L
 
-                if (wasInCall && isOutgoingCall) {
-                    scope.launch {
-                        delay(800)
+                when {
+                    wasInCall && isOutgoingCall -> scope.launch {
+                        delay(1000)
                         handleOutgoingCallEnded(duration)
                     }
-                } else if (wasMissed) {
-                    scope.launch {
-                        delay(800)
-                        handleMissedCall()
+                    wasInCall && !isOutgoingCall -> scope.launch {
+                        delay(1000)
+                        handleIncomingCallEnded(duration)
+                    }
+                    wasMissed -> {
+                        val missedNumber = savedIncomingNumber
+                        scope.launch {
+                            // 부재중은 call log 업데이트에 시간이 걸리므로 2.5초 대기
+                            delay(2500)
+                            handleMissedCall(missedNumber)
+                        }
                     }
                 }
+                savedIncomingNumber = null
             }
         }
         previousState = state
@@ -140,12 +157,30 @@ class CallMonitorService : Service() {
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun handleMissedCall() {
+    private suspend fun handleIncomingCallEnded(duration: Int) {
+        val settings = prefs.settingsFlow.first()
+        if (!settings.triggerIncoming) return
+
+        if (!isWithinActiveHours(settings)) return
+        if (duration < settings.minCallDuration) return
+
+        val (number, name) = getLastCallEntry(CallLog.Calls.INCOMING_TYPE)
+            ?: savedIncomingNumber?.let { Pair(it, getContactName(it)) }
+            ?: return
+        if (settings.onlySendTo010 && !number.startsWith("010")) return
+        sendSms(number, name, CallLog.Calls.INCOMING_TYPE, settings)
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun handleMissedCall(fallbackNumber: String?) {
         val settings = prefs.settingsFlow.first()
         if (!settings.triggerMissed) return
         if (!isWithinActiveHours(settings)) return
 
-        val (number, name) = getLastCallEntry(CallLog.Calls.MISSED_TYPE) ?: return
+        // call log 먼저 조회, 실패 시 저장된 번호 사용
+        val (number, name) = getLastCallEntry(CallLog.Calls.MISSED_TYPE)
+            ?: fallbackNumber?.let { Pair(it, getContactName(it)) }
+            ?: return
         if (settings.onlySendTo010 && !number.startsWith("010")) return
         sendSms(number, name, CallLog.Calls.MISSED_TYPE, settings)
     }
@@ -190,11 +225,16 @@ class CallMonitorService : Service() {
         callType: Int,
         settings: AppSettings
     ) {
-        val template = if (settings.activeTemplateId > 0) {
-            database.templateDao().getById(settings.activeTemplateId)
-        } else {
-            database.templateDao().getDefaultTemplate()
-        } ?: return
+        val typeId = when (callType) {
+            CallLog.Calls.OUTGOING_TYPE -> settings.outgoingTemplateId
+            CallLog.Calls.MISSED_TYPE -> settings.missedTemplateId
+            CallLog.Calls.INCOMING_TYPE -> settings.incomingTemplateId
+            else -> -1L
+        }
+        val template = (if (typeId > 0) database.templateDao().getById(typeId) else null)
+            ?: (if (settings.activeTemplateId > 0) database.templateDao().getById(settings.activeTemplateId) else null)
+            ?: database.templateDao().getDefaultTemplate()
+            ?: return
 
         val now = Date()
         val message = template.content

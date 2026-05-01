@@ -80,5 +80,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setActiveHours(start: Int, end: Int) = viewModelScope.launch { repo.setActiveHours(start, end) }
     fun setMinCallDuration(v: Int) = viewModelScope.launch { repo.setMinCallDuration(v) }
     fun setOnlySendTo010(v: Boolean) = viewModelScope.launch { repo.setOnlySendTo010(v) }
+    fun setTriggerIncoming(v: Boolean) = viewModelScope.launch { repo.setTriggerIncoming(v) }
+    fun setOutgoingTemplateId(id: Long) = viewModelScope.launch { repo.setOutgoingTemplateId(id) }
+    fun setMissedTemplateId(id: Long) = viewModelScope.launch { repo.setMissedTemplateId(id) }
+    fun setIncomingTemplateId(id: Long) = viewModelScope.launch { repo.setIncomingTemplateId(id) }
     fun clearAllLogs() = viewModelScope.launch { repo.clearAllLogs() }
 }

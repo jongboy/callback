@@ -43,12 +43,15 @@ fun HomeScreen(
     }
     val todayCount = state.smsLogs.count { it.sentAt >= todayStart && it.success }
     val totalCount = state.smsLogs.count { it.success }
-    val activeTemplate = if (settings.activeTemplateId > 0)
-        state.templates.find { it.id == settings.activeTemplateId }
-    else
-        state.templates.find { it.isDefault } ?: state.templates.firstOrNull()
 
-    // Pulse animation (active state only)
+    // 메인 프리뷰로 발신 후 메시지 우선 사용
+    val activeTemplate = run {
+        val outId = settings.outgoingTemplateId
+        if (outId > 0) state.templates.find { it.id == outId }
+        else state.templates.find { it.isDefault } ?: state.templates.firstOrNull()
+    }
+
+    // 활성화 상태 맥박 애니메이션
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f, targetValue = 1.18f,
@@ -72,7 +75,6 @@ fun HomeScreen(
     ) {
         Spacer(Modifier.height(32.dp))
 
-        // Title
         Text(
             "콜백 SMS",
             style = MaterialTheme.typography.headlineMedium,
@@ -80,7 +82,7 @@ fun HomeScreen(
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            "전화 후 자동 문자 전송",
+            "전화가 끊기면 자동으로 문자를 보내드려요",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -89,7 +91,6 @@ fun HomeScreen(
 
         // ── 메인 원형 버튼 ──
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
-            // 활성화 시 맥박 효과
             if (isEnabled) {
                 Box(
                     Modifier
@@ -101,9 +102,9 @@ fun HomeScreen(
             }
 
             val circleColor = when {
-                !hasPerms -> Color(0xFFE65100)       // 주황 - 권한 필요
-                !isEnabled -> MaterialTheme.colorScheme.surfaceVariant  // 회색 - 준비됨
-                else -> MaterialTheme.colorScheme.primary               // 파랑/초록 - 실행 중
+                !hasPerms -> Color(0xFFE65100)
+                !isEnabled -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.primary
             }
             val contentColor = when {
                 !hasPerms -> Color.White
@@ -116,9 +117,9 @@ fun HomeScreen(
                 else -> Icons.Default.CheckCircle
             }
             val circleLabel = when {
-                !hasPerms -> "권한\n설정 필요"
-                !isEnabled -> "탭하여\n시작"
-                else -> "실행 중"
+                !hasPerms -> "시작하려면\n눌러주세요"
+                !isEnabled -> "눌러서\n시작하기"
+                else -> "작동 중"
             }
 
             Button(
@@ -159,12 +160,11 @@ fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // 원 아래 안내 문구
         Text(
             text = when {
-                !hasPerms -> "앱 사용을 위해 권한이 필요해요\n버튼을 탭하면 설정할 수 있어요"
-                !isEnabled -> "모든 준비가 완료됐어요!\n버튼을 한번 더 탭하면 시작됩니다"
-                else -> "실행 중 · 전화가 끊기면 자동으로 문자를 보냅니다"
+                !hasPerms -> "아래 버튼을 누르면\n필요한 권한을 설정해드려요"
+                !isEnabled -> "준비됐어요!\n버튼을 한 번 더 누르면 시작돼요"
+                else -> "지금 작동 중이에요 · 전화가 끊기면 바로 문자를 보내드려요"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -174,7 +174,6 @@ fun HomeScreen(
 
         Spacer(Modifier.height(32.dp))
 
-        // ── 상태별 하단 콘텐츠 ──
         when {
             !hasPerms -> PermissionGuideSection()
             !isEnabled -> ReadySection(activeTemplate?.name, activeTemplate?.content)
@@ -185,8 +184,10 @@ fun HomeScreen(
                 activeTemplateContent = activeTemplate?.content,
                 triggerOutgoing = settings.triggerOutgoing,
                 triggerMissed = settings.triggerMissed,
+                triggerIncoming = settings.triggerIncoming,
                 onToggleOutgoing = { viewModel.setTriggerOutgoing(!settings.triggerOutgoing) },
-                onToggleMissed = { viewModel.setTriggerMissed(!settings.triggerMissed) }
+                onToggleMissed = { viewModel.setTriggerMissed(!settings.triggerMissed) },
+                onToggleIncoming = { viewModel.setTriggerIncoming(!settings.triggerIncoming) }
             )
         }
 
@@ -204,7 +205,7 @@ private fun PermissionGuideSection() {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            "필요한 권한",
+            "이런 권한이 필요해요",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -212,23 +213,23 @@ private fun PermissionGuideSection() {
         )
         PermissionItem(
             icon = Icons.Default.Phone,
-            title = "전화 상태 읽기",
-            desc = "전화가 끊기는 순간을 감지해요"
+            title = "전화 상태 확인",
+            desc = "언제 전화가 끊기는지 알 수 있어요"
         )
         PermissionItem(
             icon = Icons.Default.History,
-            title = "통화 기록 읽기",
-            desc = "누구에게 전화했는지 확인해요"
+            title = "통화 기록 확인",
+            desc = "누구에게 전화했는지 알 수 있어요"
         )
         PermissionItem(
             icon = Icons.Default.Sms,
-            title = "문자 보내기",
-            desc = "상대방에게 자동으로 문자를 보내요"
+            title = "자동 문자 전송",
+            desc = "전화가 끊기면 상대방에게 문자를 보내요"
         )
         PermissionItem(
             icon = Icons.Default.Notifications,
-            title = "알림",
-            desc = "문자 전송 결과를 알려드려요"
+            title = "결과 알림",
+            desc = "문자가 잘 전송됐는지 알려드려요"
         )
 
         Spacer(Modifier.height(4.dp))
@@ -250,7 +251,7 @@ private fun PermissionGuideSection() {
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "모든 권한은 자동 문자 전송에만 사용되며\n외부로 전송되지 않아요",
+                    "권한 정보는 자동 문자 전송에만 쓰이며\n외부로 절대 보내지 않아요",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
@@ -304,7 +305,7 @@ private fun ReadySection(templateName: String?, templateContent: String?) {
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("전송할 메시지 미리보기",
+                    Text("이런 메시지가 전송돼요",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer)
                 }
@@ -327,7 +328,7 @@ private fun ReadySection(templateName: String?, templateContent: String?) {
         }
 
         Text(
-            "💡  '메시지 형식' 탭에서 보낼 메시지를 바꿀 수 있어요",
+            "💡 '메시지 형식' 탭에서 내용을 바꿀 수 있어요",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp)
@@ -344,8 +345,10 @@ private fun ActiveSection(
     activeTemplateContent: String?,
     triggerOutgoing: Boolean,
     triggerMissed: Boolean,
+    triggerIncoming: Boolean,
     onToggleOutgoing: () -> Unit,
-    onToggleMissed: () -> Unit
+    onToggleMissed: () -> Unit,
+    onToggleIncoming: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -353,25 +356,23 @@ private fun ActiveSection(
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 전송 통계
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatCard(
                 modifier = Modifier.weight(1f),
-                label = "오늘 전송",
+                label = "오늘 보낸 문자",
                 value = "$todayCount 건",
                 icon = Icons.Default.Send,
                 color = MaterialTheme.colorScheme.primary
             )
             StatCard(
                 modifier = Modifier.weight(1f),
-                label = "누적 전송",
+                label = "지금까지 보낸 문자",
                 value = "$totalCount 건",
                 icon = Icons.Default.CheckCircle,
                 color = MaterialTheme.colorScheme.secondary
             )
         }
 
-        // 현재 메시지
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -387,7 +388,7 @@ private fun ActiveSection(
                     tint = MaterialTheme.colorScheme.secondary)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("전송 중인 메시지",
+                    Text("지금 전송하는 메시지",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSecondaryContainer)
                     Text(
@@ -407,27 +408,37 @@ private fun ActiveSection(
             }
         }
 
-        // 작동 모드
-        Text("작동 모드",
+        Text("어떤 경우에 문자를 보낼까요?",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp))
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = triggerOutgoing,
-                onClick = onToggleOutgoing,
-                label = { Text("발신 후 문자") },
-                leadingIcon = { Icon(Icons.Default.CallMade, null, Modifier.size(16.dp)) },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = triggerMissed,
-                onClick = onToggleMissed,
-                label = { Text("부재중 답장") },
-                leadingIcon = { Icon(Icons.Default.PhoneMissed, null, Modifier.size(16.dp)) },
-                modifier = Modifier.weight(1f)
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = triggerOutgoing,
+                    onClick = onToggleOutgoing,
+                    label = { Text("내가 건 전화 후") },
+                    leadingIcon = { Icon(Icons.Default.CallMade, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = triggerMissed,
+                    onClick = onToggleMissed,
+                    label = { Text("부재중일 때") },
+                    leadingIcon = { Icon(Icons.Default.PhoneMissed, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(Modifier.fillMaxWidth()) {
+                FilterChip(
+                    selected = triggerIncoming,
+                    onClick = onToggleIncoming,
+                    label = { Text("상대방이 전화한 후") },
+                    leadingIcon = { Icon(Icons.Default.CallReceived, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

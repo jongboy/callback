@@ -38,41 +38,48 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // ── 트리거 설정
-            SectionHeader("트리거 설정", Icons.Default.Tune)
+            // ── 언제 문자를 보낼까요?
+            SectionHeader("언제 문자를 보낼까요?", Icons.Default.Tune)
 
             SettingSwitch(
-                title = "010 번호만 발송",
-                subtitle = "010으로 시작하는 번호에만 자동 문자 전송",
+                title = "010 번호에만 보내기",
+                subtitle = "010으로 시작하는 번호에만 문자를 보내요",
                 icon = Icons.Default.PhoneAndroid,
                 checked = settings.onlySendTo010,
                 onChecked = { viewModel.setOnlySendTo010(it) }
             )
             SettingSwitch(
-                title = "발신 통화 종료 후",
-                subtitle = "내가 건 전화가 끊기면 자동 문자 전송",
+                title = "내가 전화를 건 후",
+                subtitle = "내가 먼저 전화를 건 경우에 문자를 보내요",
                 icon = Icons.Default.CallMade,
                 checked = settings.triggerOutgoing,
                 onChecked = { viewModel.setTriggerOutgoing(it) }
             )
             SettingSwitch(
-                title = "부재중 수신 후",
-                subtitle = "상대방이 전화를 못 받으면 자동 문자 전송",
+                title = "상대방이 못 받았을 때",
+                subtitle = "내가 건 전화를 상대방이 못 받은 경우에 보내요",
                 icon = Icons.Default.PhoneMissed,
                 checked = settings.triggerMissed,
                 onChecked = { viewModel.setTriggerMissed(it) }
             )
+            SettingSwitch(
+                title = "상대방이 나에게 전화한 후",
+                subtitle = "상대방이 건 전화가 끊긴 경우에 보내요",
+                icon = Icons.Default.CallReceived,
+                checked = settings.triggerIncoming,
+                onChecked = { viewModel.setTriggerIncoming(it) }
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // ── 최소 통화 시간
-            SectionHeader("최소 통화 시간", Icons.Default.Timer)
+            // ── 통화 시간 조건
+            SectionHeader("통화 시간 조건", Icons.Default.Timer)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("통화 시간이 이 값 미만이면 문자를 보내지 않습니다",
+                    Text("이 시간보다 짧은 통화에는 문자를 보내지 않아요",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
@@ -90,8 +97,8 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = when {
-                                (settings.minCallDuration) == 0 -> "모든 통화 후 전송"
-                                else -> "${settings.minCallDuration}초 이상 통화 시 전송"
+                                settings.minCallDuration == 0 -> "통화 길이 상관없이 문자를 보내요"
+                                else -> "${settings.minCallDuration}초 이상 통화했을 때만 보내요"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -102,12 +109,12 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // ── 활성 시간대
-            SectionHeader("활성 시간대", Icons.Default.Schedule)
+            // ── 작동 시간 설정
+            SectionHeader("작동 시간 설정", Icons.Default.Schedule)
 
             SettingSwitch(
-                title = "특정 시간대에만 작동",
-                subtitle = "설정한 시간 범위에서만 자동 문자를 전송합니다",
+                title = "정해진 시간에만 작동하기",
+                subtitle = "이 시간대에만 자동으로 문자를 보내요",
                 icon = Icons.Default.AccessTime,
                 checked = settings.activeHoursEnabled,
                 onChecked = { viewModel.setActiveHoursEnabled(it) }
@@ -172,7 +179,7 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     InfoRow("버전", "1.0.0")
-                    InfoRow("기능", "발신 통화 종료 / 부재중 수신 후 자동 문자 전송")
+                    InfoRow("기능", "발신·부재중·수신 통화 후 자동 문자 전송")
                     InfoRow("저장 기록", "최근 300건 보관")
                 }
             }
@@ -180,7 +187,6 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
         }
     }
 
-    // Hour picker dialog
     showHourPicker?.let { mode ->
         val currentHour = if (mode == "start") settings.activeHoursStart else settings.activeHoursEnd
         HourPickerDialog(
