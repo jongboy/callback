@@ -12,7 +12,7 @@ interface SmsLogDao {
     @Insert
     suspend fun insert(log: SmsLog)
 
-    @Query("DELETE FROM sms_logs WHERE id IN (SELECT id FROM sms_logs ORDER BY sentAt ASC LIMIT (SELECT MAX(0, COUNT(*) - 300) FROM sms_logs))")
+    @Query("DELETE FROM sms_logs WHERE id NOT IN (SELECT id FROM sms_logs ORDER BY sentAt DESC LIMIT 300)")
     suspend fun trimOldLogs()
 
     @Query("DELETE FROM sms_logs")
