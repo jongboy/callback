@@ -2,6 +2,7 @@ package com.callbacksms.app.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.callbacksms.app.data.dao.SmsLogDao
 import com.callbacksms.app.data.dao.TemplateDao
