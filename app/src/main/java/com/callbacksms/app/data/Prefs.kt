@@ -15,9 +15,11 @@ data class AppSettings(
     val serviceEnabled: Boolean = false,
     val activeTemplateId: Long = -1L,
     val triggerOutgoing: Boolean = true,
+    val triggerOutgoingMissed: Boolean = false,
     val triggerMissed: Boolean = false,
     val triggerIncoming: Boolean = false,
     val outgoingTemplateId: Long = -1L,
+    val outgoingMissedTemplateId: Long = -1L,
     val missedTemplateId: Long = -1L,
     val incomingTemplateId: Long = -1L,
     val activeHoursEnabled: Boolean = false,
@@ -33,9 +35,11 @@ class Prefs(private val context: Context) {
         val SERVICE_ENABLED = booleanPreferencesKey("service_enabled")
         val ACTIVE_TEMPLATE_ID = longPreferencesKey("active_template_id")
         val TRIGGER_OUTGOING = booleanPreferencesKey("trigger_outgoing")
+        val TRIGGER_OUTGOING_MISSED = booleanPreferencesKey("trigger_outgoing_missed")
         val TRIGGER_MISSED = booleanPreferencesKey("trigger_missed")
         val TRIGGER_INCOMING = booleanPreferencesKey("trigger_incoming")
         val OUTGOING_TEMPLATE_ID = longPreferencesKey("outgoing_template_id")
+        val OUTGOING_MISSED_TEMPLATE_ID = longPreferencesKey("outgoing_missed_template_id")
         val MISSED_TEMPLATE_ID = longPreferencesKey("missed_template_id")
         val INCOMING_TEMPLATE_ID = longPreferencesKey("incoming_template_id")
         val ACTIVE_HOURS_ENABLED = booleanPreferencesKey("active_hours_enabled")
@@ -54,9 +58,11 @@ class Prefs(private val context: Context) {
                 serviceEnabled = prefs[SERVICE_ENABLED] ?: false,
                 activeTemplateId = prefs[ACTIVE_TEMPLATE_ID] ?: -1L,
                 triggerOutgoing = prefs[TRIGGER_OUTGOING] ?: true,
+                triggerOutgoingMissed = prefs[TRIGGER_OUTGOING_MISSED] ?: false,
                 triggerMissed = prefs[TRIGGER_MISSED] ?: false,
                 triggerIncoming = prefs[TRIGGER_INCOMING] ?: false,
                 outgoingTemplateId = prefs[OUTGOING_TEMPLATE_ID] ?: -1L,
+                outgoingMissedTemplateId = prefs[OUTGOING_MISSED_TEMPLATE_ID] ?: -1L,
                 missedTemplateId = prefs[MISSED_TEMPLATE_ID] ?: -1L,
                 incomingTemplateId = prefs[INCOMING_TEMPLATE_ID] ?: -1L,
                 activeHoursEnabled = prefs[ACTIVE_HOURS_ENABLED] ?: false,
@@ -70,9 +76,11 @@ class Prefs(private val context: Context) {
     suspend fun setServiceEnabled(v: Boolean) = context.dataStore.edit { it[SERVICE_ENABLED] = v }
     suspend fun setActiveTemplateId(v: Long) = context.dataStore.edit { it[ACTIVE_TEMPLATE_ID] = v }
     suspend fun setTriggerOutgoing(v: Boolean) = context.dataStore.edit { it[TRIGGER_OUTGOING] = v }
+    suspend fun setTriggerOutgoingMissed(v: Boolean) = context.dataStore.edit { it[TRIGGER_OUTGOING_MISSED] = v }
     suspend fun setTriggerMissed(v: Boolean) = context.dataStore.edit { it[TRIGGER_MISSED] = v }
     suspend fun setTriggerIncoming(v: Boolean) = context.dataStore.edit { it[TRIGGER_INCOMING] = v }
     suspend fun setOutgoingTemplateId(v: Long) = context.dataStore.edit { it[OUTGOING_TEMPLATE_ID] = v }
+    suspend fun setOutgoingMissedTemplateId(v: Long) = context.dataStore.edit { it[OUTGOING_MISSED_TEMPLATE_ID] = v }
     suspend fun setMissedTemplateId(v: Long) = context.dataStore.edit { it[MISSED_TEMPLATE_ID] = v }
     suspend fun setIncomingTemplateId(v: Long) = context.dataStore.edit { it[INCOMING_TEMPLATE_ID] = v }
     suspend fun setActiveHoursEnabled(v: Boolean) = context.dataStore.edit { it[ACTIVE_HOURS_ENABLED] = v }

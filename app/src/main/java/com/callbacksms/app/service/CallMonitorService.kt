@@ -39,7 +39,7 @@ class CallMonitorService : Service() {
     private var previousState = TelephonyManager.CALL_STATE_IDLE
     private var isOutgoingCall = false
     private var callStartTime = 0L
-    private var savedIncomingNumber: String? = null  // 수신 번호 저장 (부재중/수신 후 사용)
+    private var savedIncomingNumber: String? = null
 
     @RequiresApi(Build.VERSION_CODES.S)
     private val telephonyCallback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
@@ -50,7 +50,6 @@ class CallMonitorService : Service() {
     private val legacyListener = object : PhoneStateListener() {
         @Deprecated("Deprecated in Java")
         override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-            // 수신 전화 번호를 미리 저장 (부재중/수신 후에 활용)
             if (state == TelephonyManager.CALL_STATE_RINGING && !phoneNumber.isNullOrEmpty()) {
                 savedIncomingNumber = phoneNumber
             }
@@ -101,7 +100,6 @@ class CallMonitorService : Service() {
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 isOutgoingCall = false
-                // Android 12+에서는 phoneNumber가 null일 수 있음 → call log에서 조회
                 if (!phoneNumber.isNullOrEmpty()) savedIncomingNumber = phoneNumber
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
@@ -109,7 +107,7 @@ class CallMonitorService : Service() {
                     isOutgoingCall = true
                     callStartTime = System.currentTimeMillis()
                 } else if (previousState == TelephonyManager.CALL_STATE_RINGING) {
-                    isOutgoingCall = false  // 수신 전화 받음
+                    isOutgoingCall = false
                     callStartTime = System.currentTimeMillis()
                 }
             }
@@ -122,8 +120,8 @@ class CallMonitorService : Service() {
 
                 when {
                     wasInCall && isOutgoingCall -> scope.launch {
-                        delay(1000)
-                        handleOutgoingCallEnded(duration)
+                        delay(1500)
+                        handleOutgoingCallEnded()
                     }
                     wasInCall && !isOutgoingCall -> scope.launch {
                         delay(1000)
@@ -132,7 +130,6 @@ class CallMonitorService : Service() {
                     wasMissed -> {
                         val missedNumber = savedIncomingNumber
                         scope.launch {
-                            // 부재중은 call log 업데이트에 시간이 걸리므로 2.5초 대기
                             delay(2500)
                             handleMissedCall(missedNumber)
                         }
@@ -144,23 +141,34 @@ class CallMonitorService : Service() {
         previousState = state
     }
 
+    // 내가 건 전화 종료 — 통화 연결 여부를 call log duration으로 판단
     @SuppressLint("MissingPermission")
-    private suspend fun handleOutgoingCallEnded(duration: Int) {
+    private suspend fun handleOutgoingCallEnded() {
         val settings = prefs.settingsFlow.first()
-        if (!settings.triggerOutgoing) return
         if (!isWithinActiveHours(settings)) return
-        if (duration < settings.minCallDuration) return
 
-        val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
-        if (settings.onlySendTo010 && !number.startsWith("010")) return
-        sendSms(number, name, CallLog.Calls.OUTGOING_TYPE, settings)
+        val logDuration = getLastCallLogDuration(CallLog.Calls.OUTGOING_TYPE)
+        if (logDuration > 0) {
+            // 상대방이 받아서 통화함
+            if (!settings.triggerOutgoing) return
+            if (logDuration < settings.minCallDuration) return
+            val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
+            if (settings.onlySendTo010 && !number.startsWith("010")) return
+            sendSms(number, name, CallLog.Calls.OUTGOING_TYPE, settings)
+        } else {
+            // 상대방이 받지 않음
+            if (!settings.triggerOutgoingMissed) return
+            val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
+            if (settings.onlySendTo010 && !number.startsWith("010")) return
+            sendSms(number, name, OUTGOING_MISSED_TYPE, settings)
+        }
     }
 
+    // 상대방이 건 전화를 내가 받은 후 종료
     @SuppressLint("MissingPermission")
     private suspend fun handleIncomingCallEnded(duration: Int) {
         val settings = prefs.settingsFlow.first()
         if (!settings.triggerIncoming) return
-
         if (!isWithinActiveHours(settings)) return
         if (duration < settings.minCallDuration) return
 
@@ -171,13 +179,13 @@ class CallMonitorService : Service() {
         sendSms(number, name, CallLog.Calls.INCOMING_TYPE, settings)
     }
 
+    // 상대방이 내게 전화했는데 내가 못 받음
     @SuppressLint("MissingPermission")
     private suspend fun handleMissedCall(fallbackNumber: String?) {
         val settings = prefs.settingsFlow.first()
         if (!settings.triggerMissed) return
         if (!isWithinActiveHours(settings)) return
 
-        // call log 먼저 조회, 실패 시 저장된 번호 사용
         val (number, name) = getLastCallEntry(CallLog.Calls.MISSED_TYPE)
             ?: fallbackNumber?.let { Pair(it, getContactName(it)) }
             ?: return
@@ -203,6 +211,21 @@ class CallMonitorService : Service() {
         } catch (e: Exception) { null }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun getLastCallLogDuration(type: Int): Int {
+        return try {
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                arrayOf(CallLog.Calls.DURATION),
+                "${CallLog.Calls.TYPE} = ?",
+                arrayOf(type.toString()),
+                "${CallLog.Calls.DATE} DESC"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) else 0
+            } ?: 0
+        } catch (e: Exception) { 0 }
+    }
+
     private fun getContactName(phoneNumber: String): String? {
         return try {
             val uri = Uri.withAppendedPath(
@@ -219,6 +242,14 @@ class CallMonitorService : Service() {
         } catch (e: Exception) { null }
     }
 
+    private fun getSmsManager(): android.telephony.SmsManager =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            getSystemService(android.telephony.SmsManager::class.java)
+        else {
+            @Suppress("DEPRECATION")
+            android.telephony.SmsManager.getDefault()
+        }
+
     private suspend fun sendSms(
         phoneNumber: String,
         contactName: String?,
@@ -227,6 +258,7 @@ class CallMonitorService : Service() {
     ) {
         val typeId = when (callType) {
             CallLog.Calls.OUTGOING_TYPE -> settings.outgoingTemplateId
+            OUTGOING_MISSED_TYPE -> settings.outgoingMissedTemplateId
             CallLog.Calls.MISSED_TYPE -> settings.missedTemplateId
             CallLog.Calls.INCOMING_TYPE -> settings.incomingTemplateId
             else -> -1L
@@ -249,21 +281,20 @@ class CallMonitorService : Service() {
         try {
             val imageUri = template.imageUri
             if (imageUri != null) {
-                success = MmsSender.send(this, phoneNumber, message, imageUri)
-                if (!success) errorMsg = "MMS 전송 실패"
+                val mmsSent = MmsSender.send(this, phoneNumber, message, imageUri)
+                if (!mmsSent) {
+                    // MMS 실패 → 텍스트 SMS로 대체 전송
+                    errorMsg = "이미지 전송 실패 (문자만 전송됨)"
+                    val sms = getSmsManager()
+                    val parts = sms.divideMessage(message)
+                    if (parts.size == 1) sms.sendTextMessage(phoneNumber, null, message, null, null)
+                    else sms.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
+                }
             } else {
-                val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    getSystemService(android.telephony.SmsManager::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    android.telephony.SmsManager.getDefault()
-                }
-                val parts = smsManager.divideMessage(message)
-                if (parts.size == 1) {
-                    smsManager.sendTextMessage(phoneNumber, null, message, null, null)
-                } else {
-                    smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
-                }
+                val sms = getSmsManager()
+                val parts = sms.divideMessage(message)
+                if (parts.size == 1) sms.sendTextMessage(phoneNumber, null, message, null, null)
+                else sms.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
             }
         } catch (e: Exception) {
             success = false
@@ -282,15 +313,18 @@ class CallMonitorService : Service() {
             )
         )
         database.smsLogDao().trimOldLogs()
-        showSmsNotification(contactName ?: phoneNumber, message, success)
+        showSmsNotification(contactName ?: phoneNumber, message, success, errorMsg)
     }
 
-    private fun showSmsNotification(recipient: String, message: String, success: Boolean) {
+    private fun showSmsNotification(recipient: String, message: String, success: Boolean, note: String?) {
+        val title = if (success) "문자 전송됨 → $recipient" else "문자 전송 실패 → $recipient"
+        val body = if (!note.isNullOrEmpty()) "⚠ $note\n$message" else message
+
         val notif = NotificationCompat.Builder(this, App.CHANNEL_SMS)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(if (success) "✓ 문자 전송 완료 → $recipient" else "✗ 문자 전송 실패")
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
@@ -328,5 +362,6 @@ class CallMonitorService : Service() {
     companion object {
         private const val NOTIF_SERVICE = 1001
         private const val NOTIF_SMS = 1002
+        const val OUTGOING_MISSED_TYPE = -99  // 내가 건 전화, 상대방이 받지 않음
     }
 }

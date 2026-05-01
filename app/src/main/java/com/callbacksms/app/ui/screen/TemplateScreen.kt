@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +23,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.callbacksms.app.data.model.MessageTemplate
+import com.callbacksms.app.service.CallMonitorService
 import com.callbacksms.app.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,102 +42,107 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
     fun templateById(id: Long) = templates.find { it.id == id }
     fun defaultTemplate() = templates.find { it.isDefault } ?: templates.firstOrNull()
 
+    // 타입별 설정 데이터
+    data class TypeConfig(
+        val key: String,
+        val icon: ImageVector,
+        val title: String,
+        val subtitle: String,
+        val enabled: Boolean,
+        val templateId: Long
+    )
+    val typeConfigs = listOf(
+        TypeConfig("outgoing", Icons.Default.CallMade, "내가 건 전화 후",
+            "통화가 끝난 후 보낼 메시지", settings.triggerOutgoing, settings.outgoingTemplateId),
+        TypeConfig("outgoingMissed", Icons.Default.CallEnd, "내가 건 전화, 상대방이 못 받음",
+            "상대방이 안 받았을 때 보낼 메시지", settings.triggerOutgoingMissed, settings.outgoingMissedTemplateId),
+        TypeConfig("missed", Icons.Default.PhoneMissed, "상대방이 걸었는데 내가 못 받음",
+            "내가 못 받았을 때 보낼 메시지", settings.triggerMissed, settings.missedTemplateId),
+        TypeConfig("incoming", Icons.Default.CallReceived, "상대방이 건 전화 후",
+            "통화가 끝난 후 보낼 메시지", settings.triggerIncoming, settings.incomingTemplateId)
+    )
+
     Scaffold(
         modifier = Modifier.padding(paddingValues),
         topBar = {
             TopAppBar(title = { Text("메시지 형식", fontWeight = FontWeight.Bold) })
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, "새 메시지 만들기")
-            }
+            ExtendedFloatingActionButton(
+                onClick = { showAddDialog = true },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("새 메시지") }
+            )
         }
     ) { inner ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(inner),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ── 전화 종류별 메시지 설정 ──
+            // ── 전화 유형별 메시지 설정 ──
             item {
-                Text(
-                    "전화 종류별 메시지 설정",
+                Text("전화 유형별 메시지",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                    color = MaterialTheme.colorScheme.onBackground)
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "전화 종류마다 다른 메시지를 보낼 수 있어요",
+                Text("유형마다 다른 메시지를 보낼 수 있어요",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            items(typeConfigs, key = { it.key }) { cfg ->
+                val assignedTemplate = templateById(cfg.templateId) ?: defaultTemplate()
+                TypeCard(
+                    icon = cfg.icon,
+                    title = cfg.title,
+                    subtitle = cfg.subtitle,
+                    enabled = cfg.enabled,
+                    template = assignedTemplate,
+                    onChangeTapped = { pickingTypeFor = cfg.key }
                 )
             }
 
+            // ── 메시지 목록 ──
             item {
-                TypeAssignmentCard(
-                    icon = Icons.Default.CallMade,
-                    callTypeLabel = "발신",
-                    title = "내가 전화를 건 후",
-                    template = templateById(settings.outgoingTemplateId) ?: defaultTemplate(),
-                    enabled = settings.triggerOutgoing,
-                    onChangeTapped = { pickingTypeFor = "outgoing" }
-                )
-            }
-
-            item {
-                TypeAssignmentCard(
-                    icon = Icons.Default.PhoneMissed,
-                    callTypeLabel = "부재중",
-                    title = "상대방이 못 받았을 때",
-                    template = templateById(settings.missedTemplateId) ?: defaultTemplate(),
-                    enabled = settings.triggerMissed,
-                    onChangeTapped = { pickingTypeFor = "missed" }
-                )
-            }
-
-            item {
-                TypeAssignmentCard(
-                    icon = Icons.Default.CallReceived,
-                    callTypeLabel = "수신",
-                    title = "상대방이 나에게 전화한 후",
-                    template = templateById(settings.incomingTemplateId) ?: defaultTemplate(),
-                    enabled = settings.triggerIncoming,
-                    onChangeTapped = { pickingTypeFor = "incoming" }
-                )
-            }
-
-            item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "내 메시지 목록",
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+                Text("메시지 목록",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                    color = MaterialTheme.colorScheme.onBackground)
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "💡 메시지에 {이름}, {시간}, {날짜}를 넣으면 자동으로 바뀌어요",
+                Text("💡 {이름} {시간} {날짜} 를 넣으면 자동으로 바뀌어요",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
             }
 
             if (templates.isEmpty()) {
                 item {
                     Box(
-                        Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 40.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Message, null, Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(12.dp))
+                            Box(
+                                Modifier.size(72.dp).clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Message, null, Modifier.size(36.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(Modifier.height(16.dp))
                             Text("아직 메시지가 없어요",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("오른쪽 아래 + 버튼을 눌러 추가해보세요",
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.height(4.dp))
+                            Text("아래 '새 메시지' 버튼을 눌러 추가해보세요",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -150,29 +158,32 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 )
             }
 
-            item { Spacer(Modifier.height(80.dp)) }
+            item { Spacer(Modifier.height(88.dp)) }
         }
     }
 
-    // 타입별 메시지 선택 다이얼로그
-    pickingTypeFor?.let { type ->
-        val currentId = when (type) {
+    // 타입별 메시지 선택
+    pickingTypeFor?.let { typeKey ->
+        val currentId = when (typeKey) {
             "outgoing" -> settings.outgoingTemplateId
+            "outgoingMissed" -> settings.outgoingMissedTemplateId
             "missed" -> settings.missedTemplateId
             else -> settings.incomingTemplateId
         }
-        val title = when (type) {
-            "outgoing" -> "내가 전화를 건 후 보낼 메시지"
-            "missed" -> "부재중일 때 보낼 메시지"
-            else -> "상대방이 전화한 후 보낼 메시지"
+        val dialogTitle = when (typeKey) {
+            "outgoing" -> "내가 건 전화 후 — 메시지 선택"
+            "outgoingMissed" -> "상대방이 못 받았을 때 — 메시지 선택"
+            "missed" -> "내가 못 받았을 때 — 메시지 선택"
+            else -> "상대방이 건 전화 후 — 메시지 선택"
         }
         TemplatePickerDialog(
-            title = title,
+            title = dialogTitle,
             templates = templates,
             currentId = currentId,
             onPick = { id ->
-                when (type) {
+                when (typeKey) {
                     "outgoing" -> viewModel.setOutgoingTemplateId(id)
+                    "outgoingMissed" -> viewModel.setOutgoingMissedTemplateId(id)
                     "missed" -> viewModel.setMissedTemplateId(id)
                     else -> viewModel.setIncomingTemplateId(id)
                 }
@@ -219,69 +230,83 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("삭제하기") }
             },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("취소") }
-            }
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("취소") } }
         )
     }
 }
 
 @Composable
-private fun TypeAssignmentCard(
+private fun TypeCard(
     icon: ImageVector,
-    callTypeLabel: String,
     title: String,
-    template: MessageTemplate?,
+    subtitle: String,
     enabled: Boolean,
+    template: MessageTemplate?,
     onChangeTapped: () -> Unit
 ) {
-    val containerColor = if (enabled) MaterialTheme.colorScheme.secondaryContainer
-                         else MaterialTheme.colorScheme.surfaceVariant
-    val onContainerColor = if (enabled) MaterialTheme.colorScheme.onSecondaryContainer
-                           else MaterialTheme.colorScheme.onSurfaceVariant
-    val accentColor = if (enabled) MaterialTheme.colorScheme.secondary
-                      else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (enabled) MaterialTheme.colorScheme.surface
+                             else MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (enabled) 2.dp else 0.dp)
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(20.dp), tint = accentColor)
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
+        Row(Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (enabled) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, Modifier.size(22.dp),
+                    tint = if (enabled) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(title, style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold, color = onContainerColor)
-                    Text(callTypeLabel, style = MaterialTheme.typography.labelSmall,
-                        color = accentColor)
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (enabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!enabled) {
+                        Spacer(Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                        ) {
+                            Text("꺼짐", Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
-                if (!enabled) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text("꺼짐", style = MaterialTheme.typography.labelSmall) }
+                Text(
+                    if (template != null) template.name
+                    else "메시지를 선택해주세요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+                if (template != null && template.content.isNotBlank()) {
+                    Text(
+                        template.content.take(38) + if (template.content.length > 38) "…" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    if (template != null) {
-                        Text(template.name, style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold, color = onContainerColor)
-                        Text(
-                            template.content.take(45) + if (template.content.length > 45) "…" else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onContainerColor.copy(alpha = 0.7f)
-                        )
-                    } else {
-                        Text("메시지가 없어요 · 아래에서 추가해주세요",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = onContainerColor.copy(alpha = 0.6f))
-                    }
-                }
-                TextButton(onClick = onChangeTapped) { Text("변경하기") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onChangeTapped,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text("변경", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -297,16 +322,18 @@ private fun TemplatePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
         text = {
             if (templates.isEmpty()) {
-                Text("메시지가 없어요. 먼저 메시지를 추가해주세요.")
+                Text("메시지가 없어요. 먼저 메시지를 추가해주세요.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     templates.forEach { t ->
                         val isSelected = t.id == currentId
                         Card(
                             onClick = { onPick(t.id) },
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
                                                 else MaterialTheme.colorScheme.surfaceVariant
@@ -314,17 +341,15 @@ private fun TemplatePickerDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                Modifier.padding(12.dp).fillMaxWidth(),
+                                Modifier.padding(14.dp).fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(t.name, style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        t.content.take(35) + if (t.content.length > 35) "…" else "",
+                                    Text(t.content.take(35) + if (t.content.length > 35) "…" else "",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if (isSelected) {
                                     Icon(Icons.Default.CheckCircle, null, Modifier.size(20.dp),
@@ -336,9 +361,7 @@ private fun TemplatePickerDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("닫기") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } }
     )
 }
 
@@ -350,41 +373,57 @@ private fun TemplateCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(template.name, style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                Text(template.name, style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f))
                 if (template.isDefault) {
-                    SuggestionChip(onClick = {},
-                        label = { Text("기본", style = MaterialTheme.typography.labelSmall) })
-                    Spacer(Modifier.width(4.dp))
+                    Surface(shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer) {
+                        Text("기본", Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(6.dp))
                 }
                 if (template.imageUri != null) {
-                    Icon(Icons.Default.Image, "이미지 첨부됨", Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary)
+                    Surface(shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer) {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Image, null, Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.tertiary)
+                            Spacer(Modifier.width(3.dp))
+                            Text("사진", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(template.content,
-                style = MaterialTheme.typography.bodyMedium,
+            Spacer(Modifier.height(8.dp))
+            Text(template.content, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+                    Icon(Icons.Default.Edit, null, Modifier.size(15.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("수정하기")
+                    Text("수정")
                 }
+                Spacer(Modifier.width(4.dp))
                 TextButton(onClick = onDelete,
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                    Icon(Icons.Default.Delete, null, Modifier.size(16.dp))
+                    Icon(Icons.Default.Delete, null, Modifier.size(15.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("삭제하기")
+                    Text("삭제")
                 }
             }
         }
@@ -408,10 +447,7 @@ private fun TemplateDialog(
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        uri?.let {
-            val path = viewModel.copyImageToInternal(it)
-            selectedImagePath = path
-        }
+        uri?.let { selectedImagePath = viewModel.copyImageToInternal(it) }
     }
 
     AlertDialog(
@@ -420,63 +456,57 @@ private fun TemplateDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
+                    value = name, onValueChange = { name = it },
                     label = { Text("메시지 이름") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = content,
-                    onValueChange = { content = it },
+                    value = content, onValueChange = { content = it },
                     label = { Text("보낼 내용") },
-                    minLines = 3,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text("{이름} {시간} {날짜} 를 넣으면 자동으로 바뀌어요") }
+                    minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("{이름} {시간} {날짜} 자동 치환 가능") }
                 )
-
                 if (selectedImagePath != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val bitmap = remember(selectedImagePath) {
-                            selectedImagePath?.let {
-                                try { BitmapFactory.decodeFile(it)?.asImageBitmap() } catch (e: Exception) { null }
+                    Card(shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val bitmap = remember(selectedImagePath) {
+                                selectedImagePath?.let {
+                                    try { android.graphics.BitmapFactory.decodeFile(it)?.asImageBitmap() }
+                                    catch (e: Exception) { null }
+                                }
                             }
-                        }
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap,
-                                contentDescription = "첨부 이미지",
-                                modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(Icons.Default.Image, null, Modifier.size(72.dp),
-                                tint = MaterialTheme.colorScheme.primary)
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("이미지가 첨부돼요", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary)
-                            Text("사진과 함께 메시지가 전송돼요",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { selectedImagePath = null }) {
-                            Icon(Icons.Default.Close, "이미지 제거",
-                                tint = MaterialTheme.colorScheme.error)
+                            if (bitmap != null) {
+                                Image(bitmap, null,
+                                    Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop)
+                            } else {
+                                Icon(Icons.Default.Image, null, Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("사진 첨부됨",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary)
+                                Text("사진과 함께 전송돼요 (MMS)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { selectedImagePath = null }) {
+                                Icon(Icons.Default.Close, null,
+                                    tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
                 } else {
                     OutlinedButton(
                         onClick = {
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Default.Image, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
@@ -487,15 +517,11 @@ private fun TemplateDialog(
         },
         confirmButton = {
             Button(
-                onClick = {
-                    if (name.isNotBlank() && content.isNotBlank())
-                        onConfirm(name.trim(), content.trim(), selectedImagePath)
-                },
-                enabled = name.isNotBlank() && content.isNotBlank()
+                onClick = { if (name.isNotBlank() && content.isNotBlank()) onConfirm(name.trim(), content.trim(), selectedImagePath) },
+                enabled = name.isNotBlank() && content.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
             ) { Text("저장하기") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }
     )
 }

@@ -44,65 +44,81 @@ fun HomeScreen(
     val todayCount = state.smsLogs.count { it.sentAt >= todayStart && it.success }
     val totalCount = state.smsLogs.count { it.success }
 
-    // 메인 프리뷰로 발신 후 메시지 우선 사용
     val activeTemplate = run {
-        val outId = settings.outgoingTemplateId
-        if (outId > 0) state.templates.find { it.id == outId }
+        val id = settings.outgoingTemplateId
+        if (id > 0) state.templates.find { it.id == id }
         else state.templates.find { it.isDefault } ?: state.templates.firstOrNull()
     }
 
-    // 활성화 상태 맥박 애니메이션
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f, targetValue = 1.18f,
-        animationSpec = infiniteRepeatable(
-            tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse
-        ), label = "pulseScale"
+        initialValue = 1f, targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulseScale"
     )
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.25f, targetValue = 0.05f,
-        animationSpec = infiniteRepeatable(
-            tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse
-        ), label = "pulseAlpha"
+        initialValue = 0.2f, targetValue = 0.04f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulseAlpha"
     )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(28.dp))
 
-        Text(
-            "콜백 SMS",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            "전화가 끊기면 자동으로 문자를 보내드려요",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // ── 상단 제목 + 상태 뱃지 ──
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth()
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("콜백 SMS",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground)
+                Text("전화 후 자동 문자 전송",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (isEnabled && hasPerms) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF00C896).copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(6.dp).clip(CircleShape)
+                                .background(Color(0xFF00C896))
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text("작동 중", style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold, color = Color(0xFF00A87A))
+                    }
+                }
+            }
+        }
 
-        Spacer(Modifier.height(44.dp))
+        Spacer(Modifier.height(36.dp))
 
         // ── 메인 원형 버튼 ──
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
-            if (isEnabled) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(210.dp)) {
+            if (isEnabled && hasPerms) {
                 Box(
-                    Modifier
-                        .size(200.dp)
-                        .scale(pulseScale)
-                        .clip(CircleShape)
+                    Modifier.size(200.dp).scale(pulseScale).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha))
                 )
             }
-
             val circleColor = when {
-                !hasPerms -> Color(0xFFE65100)
+                !hasPerms -> Color(0xFFFF6B35)
                 !isEnabled -> MaterialTheme.colorScheme.surfaceVariant
                 else -> MaterialTheme.colorScheme.primary
             }
@@ -111,17 +127,6 @@ fun HomeScreen(
                 !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant
                 else -> MaterialTheme.colorScheme.onPrimary
             }
-            val circleIcon = when {
-                !hasPerms -> Icons.Default.Lock
-                !isEnabled -> Icons.Default.TouchApp
-                else -> Icons.Default.CheckCircle
-            }
-            val circleLabel = when {
-                !hasPerms -> "시작하려면\n눌러주세요"
-                !isEnabled -> "눌러서\n시작하기"
-                else -> "작동 중"
-            }
-
             Button(
                 onClick = {
                     when {
@@ -130,52 +135,59 @@ fun HomeScreen(
                         else -> viewModel.setServiceEnabled(false)
                     }
                 },
-                modifier = Modifier.size(190.dp),
+                modifier = Modifier.size(185.dp),
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(containerColor = circleColor),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, pressedElevation = 2.dp)
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = circleIcon,
+                        imageVector = when {
+                            !hasPerms -> Icons.Default.Lock
+                            !isEnabled -> Icons.Default.PowerSettingsNew
+                            else -> Icons.Default.CheckCircle
+                        },
                         contentDescription = null,
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.size(52.dp),
                         tint = contentColor
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = circleLabel,
-                        fontSize = 16.sp,
+                        text = when {
+                            !hasPerms -> "권한 설정"
+                            !isEnabled -> "시작하기"
+                            else -> "작동 중"
+                        },
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = contentColor,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 20.sp
+                        textAlign = TextAlign.Center
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
         Text(
             text = when {
-                !hasPerms -> "아래 버튼을 누르면\n필요한 권한을 설정해드려요"
-                !isEnabled -> "준비됐어요!\n버튼을 한 번 더 누르면 시작돼요"
-                else -> "지금 작동 중이에요 · 전화가 끊기면 바로 문자를 보내드려요"
+                !hasPerms -> "권한 설정이 필요해요"
+                !isEnabled -> "버튼을 누르면 시작돼요"
+                else -> "전화가 끊기면 바로 문자를 보내드려요"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            lineHeight = 22.sp
+            textAlign = TextAlign.Center
         )
 
         Spacer(Modifier.height(32.dp))
 
+        // ── 상태별 콘텐츠 ──
         when {
-            !hasPerms -> PermissionGuideSection()
+            !hasPerms -> PermissionSection(onRequestPermissions)
             !isEnabled -> ReadySection(activeTemplate?.name, activeTemplate?.content)
             else -> ActiveSection(
                 todayCount = todayCount,
@@ -183,160 +195,134 @@ fun HomeScreen(
                 activeTemplateName = activeTemplate?.name,
                 activeTemplateContent = activeTemplate?.content,
                 triggerOutgoing = settings.triggerOutgoing,
+                triggerOutgoingMissed = settings.triggerOutgoingMissed,
                 triggerMissed = settings.triggerMissed,
                 triggerIncoming = settings.triggerIncoming,
                 onToggleOutgoing = { viewModel.setTriggerOutgoing(!settings.triggerOutgoing) },
+                onToggleOutgoingMissed = { viewModel.setTriggerOutgoingMissed(!settings.triggerOutgoingMissed) },
                 onToggleMissed = { viewModel.setTriggerMissed(!settings.triggerMissed) },
                 onToggleIncoming = { viewModel.setTriggerIncoming(!settings.triggerIncoming) }
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
     }
 }
 
-// ── 1단계: 권한 안내 ──
+// ── 1단계: 권한 필요 ──
 @Composable
-private fun PermissionGuideSection() {
+private fun PermissionSection(onRequestPermissions: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            "이런 권한이 필요해요",
+        Text("이런 권한이 필요해요",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-        PermissionItem(
-            icon = Icons.Default.Phone,
-            title = "전화 상태 확인",
-            desc = "언제 전화가 끊기는지 알 수 있어요"
-        )
-        PermissionItem(
-            icon = Icons.Default.History,
-            title = "통화 기록 확인",
-            desc = "누구에게 전화했는지 알 수 있어요"
-        )
-        PermissionItem(
-            icon = Icons.Default.Sms,
-            title = "자동 문자 전송",
-            desc = "전화가 끊기면 상대방에게 문자를 보내요"
-        )
-        PermissionItem(
-            icon = Icons.Default.Notifications,
-            title = "결과 알림",
-            desc = "문자가 잘 전송됐는지 알려드려요"
-        )
+            color = MaterialTheme.colorScheme.onBackground)
+
+        PermItem(Icons.Default.Phone, "전화 상태 확인", "전화가 끊기는 순간을 감지해요")
+        PermItem(Icons.Default.History, "통화 기록 확인", "누구에게 전화했는지 알 수 있어요")
+        PermItem(Icons.Default.Sms, "문자 전송", "전화 후 자동으로 문자를 보내요")
+        PermItem(Icons.Default.Notifications, "알림", "전송 결과를 알림으로 알려드려요")
 
         Spacer(Modifier.height(4.dp))
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
-            Row(
-                Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Security, null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Security, null,
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(
-                    "권한 정보는 자동 문자 전송에만 쓰이며\n외부로 절대 보내지 않아요",
+                Text("권한 정보는 자동 문자 전송에만 사용되며\n외부로 절대 보내지 않아요",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Button(
+            onClick = onRequestPermissions,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("권한 설정하러 가기", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun PermItem(icon: ImageVector, title: String, desc: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(38.dp).clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(desc, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
-@Composable
-private fun PermissionItem(icon: ImageVector, title: String, desc: String) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold)
-            Text(desc, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-// ── 2단계: 시작 준비 완료 ──
+// ── 2단계: 준비 완료 ──
 @Composable
 private fun ReadySection(templateName: String?, templateContent: String?) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            ),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Message, null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(20.dp))
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("이런 메시지가 전송돼요",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    templateName ?: "기본 메시지",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                Spacer(Modifier.height(10.dp))
+                Text(templateName ?: "기본 메시지",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold)
                 if (templateContent != null) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        templateContent.take(60) + if (templateContent.length > 60) "…" else "",
+                        templateContent.take(70) + if (templateContent.length > 70) "…" else "",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
-
-        Text(
-            "💡 '메시지 형식' 탭에서 내용을 바꿀 수 있어요",
+        Text("💡 '메시지' 탭에서 내용을 바꿀 수 있어요",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
+            modifier = Modifier.padding(horizontal = 4.dp))
     }
 }
 
-// ── 3단계: 실행 중 ──
+// ── 3단계: 작동 중 ──
 @Composable
 private fun ActiveSection(
     todayCount: Int,
@@ -344,102 +330,121 @@ private fun ActiveSection(
     activeTemplateName: String?,
     activeTemplateContent: String?,
     triggerOutgoing: Boolean,
+    triggerOutgoingMissed: Boolean,
     triggerMissed: Boolean,
     triggerIncoming: Boolean,
     onToggleOutgoing: () -> Unit,
+    onToggleOutgoingMissed: () -> Unit,
     onToggleMissed: () -> Unit,
     onToggleIncoming: () -> Unit
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 전송 통계
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(
-                modifier = Modifier.weight(1f),
-                label = "오늘 보낸 문자",
-                value = "$todayCount 건",
-                icon = Icons.Default.Send,
-                color = MaterialTheme.colorScheme.primary
-            )
-            StatCard(
-                modifier = Modifier.weight(1f),
-                label = "지금까지 보낸 문자",
-                value = "$totalCount 건",
-                icon = Icons.Default.CheckCircle,
-                color = MaterialTheme.colorScheme.secondary
-            )
+            StatCard(Modifier.weight(1f), "오늘 보낸 문자", todayCount, Icons.Default.Send,
+                MaterialTheme.colorScheme.primary)
+            StatCard(Modifier.weight(1f), "지금까지 총", totalCount, Icons.Default.CheckCircle,
+                MaterialTheme.colorScheme.tertiary)
         }
 
+        // 현재 메시지
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            )
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Row(
-                Modifier.padding(16.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Message, null,
-                    tint = MaterialTheme.colorScheme.secondary)
-                Spacer(Modifier.width(12.dp))
+            Row(Modifier.padding(20.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Message, null, Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.secondary)
+                }
+                Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("지금 전송하는 메시지",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer)
-                    Text(
-                        activeTemplateName ?: "기본 메시지",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(activeTemplateName ?: "기본 메시지",
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     if (activeTemplateContent != null) {
                         Text(
-                            activeTemplateContent.take(50) + if (activeTemplateContent.length > 50) "…" else "",
+                            activeTemplateContent.take(45) + if (activeTemplateContent.length > 45) "…" else "",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
         }
 
+        // 작동 조건 토글
         Text("어떤 경우에 문자를 보낼까요?",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp))
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground)
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = triggerOutgoing,
-                    onClick = onToggleOutgoing,
-                    label = { Text("내가 건 전화 후") },
-                    leadingIcon = { Icon(Icons.Default.CallMade, null, Modifier.size(16.dp)) },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = triggerMissed,
-                    onClick = onToggleMissed,
-                    label = { Text("부재중일 때") },
-                    leadingIcon = { Icon(Icons.Default.PhoneMissed, null, Modifier.size(16.dp)) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(Modifier.fillMaxWidth()) {
-                FilterChip(
-                    selected = triggerIncoming,
-                    onClick = onToggleIncoming,
-                    label = { Text("상대방이 전화한 후") },
-                    leadingIcon = { Icon(Icons.Default.CallReceived, null, Modifier.size(16.dp)) },
-                    modifier = Modifier.weight(1f)
-                )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column {
+                TriggerRow(Icons.Default.CallMade, "내가 건 전화 후",
+                    "통화가 끝난 후 문자를 보내요", triggerOutgoing, onToggleOutgoing)
+                HorizontalDivider(Modifier.padding(start = 72.dp))
+                TriggerRow(Icons.Default.CallEnd, "내가 걸었는데 상대방이 못 받음",
+                    "상대방이 전화를 안 받았을 때 보내요", triggerOutgoingMissed, onToggleOutgoingMissed)
+                HorizontalDivider(Modifier.padding(start = 72.dp))
+                TriggerRow(Icons.Default.PhoneMissed, "상대방이 걸었는데 내가 못 받음",
+                    "내가 전화를 못 받았을 때 보내요", triggerMissed, onToggleMissed)
+                HorizontalDivider(Modifier.padding(start = 72.dp))
+                TriggerRow(Icons.Default.CallReceived, "상대방이 건 전화 후",
+                    "통화가 끝난 후 문자를 보내요", triggerIncoming, onToggleIncoming)
             }
         }
+    }
+}
+
+@Composable
+private fun TriggerRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onChecked: () -> Unit
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp).fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(38.dp).clip(RoundedCornerShape(10.dp))
+                .background(
+                    if (checked) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, Modifier.size(18.dp),
+                tint = if (checked) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = { onChecked() })
     }
 }
 
@@ -447,25 +452,21 @@ private fun ActiveSection(
 private fun StatCard(
     modifier: Modifier,
     label: String,
-    value: String,
+    count: Int,
     icon: ImageVector,
-    color: Color
+    tintColor: Color
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.height(6.dp))
-            Text(value,
-                style = MaterialTheme.typography.titleLarge,
+        Column(Modifier.padding(20.dp)) {
+            Icon(icon, null, Modifier.size(20.dp), tint = tintColor)
+            Spacer(Modifier.height(10.dp))
+            Text("$count 건",
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface)
             Text(label,

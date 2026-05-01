@@ -49,22 +49,29 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 onChecked = { viewModel.setOnlySendTo010(it) }
             )
             SettingSwitch(
-                title = "내가 전화를 건 후",
-                subtitle = "내가 먼저 전화를 건 경우에 문자를 보내요",
+                title = "내가 건 전화 후 (통화 완료)",
+                subtitle = "통화가 끝난 후 문자를 보내요",
                 icon = Icons.Default.CallMade,
                 checked = settings.triggerOutgoing,
                 onChecked = { viewModel.setTriggerOutgoing(it) }
             )
             SettingSwitch(
-                title = "상대방이 못 받았을 때",
-                subtitle = "내가 건 전화를 상대방이 못 받은 경우에 보내요",
+                title = "내가 건 전화, 상대방이 못 받음",
+                subtitle = "상대방이 전화를 안 받았을 때 보내요",
+                icon = Icons.Default.CallEnd,
+                checked = settings.triggerOutgoingMissed,
+                onChecked = { viewModel.setTriggerOutgoingMissed(it) }
+            )
+            SettingSwitch(
+                title = "상대방이 걸었는데 내가 못 받음",
+                subtitle = "내가 전화를 못 받았을 때 보내요",
                 icon = Icons.Default.PhoneMissed,
                 checked = settings.triggerMissed,
                 onChecked = { viewModel.setTriggerMissed(it) }
             )
             SettingSwitch(
-                title = "상대방이 나에게 전화한 후",
-                subtitle = "상대방이 건 전화가 끊긴 경우에 보내요",
+                title = "상대방이 건 전화 후 (통화 완료)",
+                subtitle = "상대방이 건 통화가 끝난 후 문자를 보내요",
                 icon = Icons.Default.CallReceived,
                 checked = settings.triggerIncoming,
                 onChecked = { viewModel.setTriggerIncoming(it) }

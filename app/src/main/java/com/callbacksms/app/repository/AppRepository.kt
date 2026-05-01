@@ -41,8 +41,10 @@ class AppRepository(private val context: Context) {
     suspend fun setActiveHours(start: Int, end: Int) = prefs.setActiveHours(start, end)
     suspend fun setMinCallDuration(v: Int) = prefs.setMinCallDuration(v)
     suspend fun setOnlySendTo010(v: Boolean) = prefs.setOnlySendTo010(v)
+    suspend fun setTriggerOutgoingMissed(v: Boolean) = prefs.setTriggerOutgoingMissed(v)
     suspend fun setTriggerIncoming(v: Boolean) = prefs.setTriggerIncoming(v)
     suspend fun setOutgoingTemplateId(id: Long) = prefs.setOutgoingTemplateId(id)
+    suspend fun setOutgoingMissedTemplateId(id: Long) = prefs.setOutgoingMissedTemplateId(id)
     suspend fun setMissedTemplateId(id: Long) = prefs.setMissedTemplateId(id)
     suspend fun setIncomingTemplateId(id: Long) = prefs.setIncomingTemplateId(id)
 

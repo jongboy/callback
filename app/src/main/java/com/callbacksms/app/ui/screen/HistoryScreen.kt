@@ -17,6 +17,7 @@ import com.callbacksms.app.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import android.provider.CallLog
+import com.callbacksms.app.service.CallMonitorService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,33 +95,58 @@ fun HistoryScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
     }
 }
 
+private fun callTypeIcon(callType: Int) = when (callType) {
+    CallLog.Calls.OUTGOING_TYPE -> Icons.Default.CallMade
+    CallMonitorService.OUTGOING_MISSED_TYPE -> Icons.Default.CallEnd
+    CallLog.Calls.MISSED_TYPE -> Icons.Default.PhoneMissed
+    CallLog.Calls.INCOMING_TYPE -> Icons.Default.CallReceived
+    else -> Icons.Default.Phone
+}
+
+private fun callTypeLabel(callType: Int) = when (callType) {
+    CallLog.Calls.OUTGOING_TYPE -> "내가 건 전화"
+    CallMonitorService.OUTGOING_MISSED_TYPE -> "내가 건 전화 (상대 부재중)"
+    CallLog.Calls.MISSED_TYPE -> "내가 못 받은 전화"
+    CallLog.Calls.INCOMING_TYPE -> "상대방이 건 전화"
+    else -> "전화"
+}
+
 @Composable
 private fun LogCard(log: SmsLog) {
     val timeStr = SimpleDateFormat("HH:mm", Locale.KOREAN).format(Date(log.sentAt))
-    val isOutgoing = log.callType == CallLog.Calls.OUTGOING_TYPE
+    val iconBgColor = when (log.callType) {
+        CallLog.Calls.OUTGOING_TYPE -> MaterialTheme.colorScheme.primaryContainer
+        CallMonitorService.OUTGOING_MISSED_TYPE -> MaterialTheme.colorScheme.errorContainer
+        CallLog.Calls.MISSED_TYPE -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val iconTint = when (log.callType) {
+        CallLog.Calls.OUTGOING_TYPE -> MaterialTheme.colorScheme.primary
+        CallMonitorService.OUTGOING_MISSED_TYPE -> MaterialTheme.colorScheme.error
+        CallLog.Calls.MISSED_TYPE -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.secondary
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (log.success) MaterialTheme.colorScheme.surface
-                             else MaterialTheme.colorScheme.errorContainer
-        )
+                             else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-            // Call type icon
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (isOutgoing) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier.size(36.dp)
+                shape = RoundedCornerShape(10.dp),
+                color = iconBgColor,
+                modifier = Modifier.size(40.dp)
             ) {
                 Icon(
-                    imageVector = if (isOutgoing) Icons.Default.CallMade else Icons.Default.PhoneMissed,
+                    imageVector = callTypeIcon(log.callType),
                     contentDescription = null,
-                    modifier = Modifier.padding(8.dp),
-                    tint = if (isOutgoing) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.tertiary
+                    modifier = Modifier.padding(10.dp),
+                    tint = iconTint
                 )
             }
             Spacer(Modifier.width(12.dp))
@@ -128,37 +154,52 @@ private fun LogCard(log: SmsLog) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = log.contactName ?: log.phoneNumber,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
                     Text(timeStr, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Text(callTypeLabel(log.callType),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (log.contactName != null) {
                     Text(log.phoneNumber, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(log.message, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (log.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = if (log.success) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.error
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = if (log.success) "전송 완료 • ${log.templateName}"
-                               else "전송 실패: ${log.errorMessage}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (log.success) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.error
-                    )
+                Spacer(Modifier.height(6.dp))
+                // 전송 결과
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (log.success) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (log.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                            contentDescription = null,
+                            modifier = Modifier.size(11.dp),
+                            tint = if (log.success) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.error
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = if (log.success) {
+                                if (!log.errorMessage.isNullOrEmpty()) "전송됨 (${log.errorMessage})"
+                                else "전송됨 • ${log.templateName}"
+                            } else "전송 실패: ${log.errorMessage ?: "알 수 없는 오류"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (log.success) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }
