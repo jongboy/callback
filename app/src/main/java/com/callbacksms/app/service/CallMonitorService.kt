@@ -135,6 +135,7 @@ class CallMonitorService : Service() {
         if (duration < settings.minCallDuration) return
 
         val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
+        if (settings.onlySendTo010 && !number.startsWith("010")) return
         sendSms(number, name, CallLog.Calls.OUTGOING_TYPE, settings)
     }
 
@@ -145,6 +146,7 @@ class CallMonitorService : Service() {
         if (!isWithinActiveHours(settings)) return
 
         val (number, name) = getLastCallEntry(CallLog.Calls.MISSED_TYPE) ?: return
+        if (settings.onlySendTo010 && !number.startsWith("010")) return
         sendSms(number, name, CallLog.Calls.MISSED_TYPE, settings)
     }
 
@@ -205,17 +207,23 @@ class CallMonitorService : Service() {
         var errorMsg: String? = null
 
         try {
-            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                getSystemService(android.telephony.SmsManager::class.java)
+            val imageUri = template.imageUri
+            if (imageUri != null) {
+                success = MmsSender.send(this, phoneNumber, message, imageUri)
+                if (!success) errorMsg = "MMS 전송 실패"
             } else {
-                @Suppress("DEPRECATION")
-                android.telephony.SmsManager.getDefault()
-            }
-            val parts = smsManager.divideMessage(message)
-            if (parts.size == 1) {
-                smsManager.sendTextMessage(phoneNumber, null, message, null, null)
-            } else {
-                smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
+                val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    getSystemService(android.telephony.SmsManager::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.telephony.SmsManager.getDefault()
+                }
+                val parts = smsManager.divideMessage(message)
+                if (parts.size == 1) {
+                    smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+                } else {
+                    smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
+                }
             }
         } catch (e: Exception) {
             success = false

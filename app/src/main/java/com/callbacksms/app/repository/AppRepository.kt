@@ -2,11 +2,13 @@ package com.callbacksms.app.repository
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import com.callbacksms.app.data.AppDatabase
 import com.callbacksms.app.data.Prefs
 import com.callbacksms.app.data.model.MessageTemplate
 import com.callbacksms.app.service.CallMonitorService
+import java.io.File
 
 class AppRepository(private val context: Context) {
     private val db = AppDatabase.getDatabase(context)
@@ -16,11 +18,14 @@ class AppRepository(private val context: Context) {
     val smsLogs = db.smsLogDao().getAllLogs()
     val settings = prefs.settingsFlow
 
-    suspend fun addTemplate(name: String, content: String) =
-        db.templateDao().insert(MessageTemplate(name = name, content = content))
+    suspend fun addTemplate(name: String, content: String, imageUri: String? = null) =
+        db.templateDao().insert(MessageTemplate(name = name, content = content, imageUri = imageUri))
 
     suspend fun updateTemplate(t: MessageTemplate) = db.templateDao().update(t)
-    suspend fun deleteTemplate(t: MessageTemplate) = db.templateDao().delete(t)
+    suspend fun deleteTemplate(t: MessageTemplate) {
+        t.imageUri?.let { File(it).delete() }
+        db.templateDao().delete(t)
+    }
     suspend fun setDefaultTemplate(id: Long) = db.templateDao().setDefaultTemplate(id)
     suspend fun clearAllLogs() = db.smsLogDao().deleteAll()
 
@@ -35,6 +40,22 @@ class AppRepository(private val context: Context) {
     suspend fun setActiveHoursEnabled(v: Boolean) = prefs.setActiveHoursEnabled(v)
     suspend fun setActiveHours(start: Int, end: Int) = prefs.setActiveHours(start, end)
     suspend fun setMinCallDuration(v: Int) = prefs.setMinCallDuration(v)
+    suspend fun setOnlySendTo010(v: Boolean) = prefs.setOnlySendTo010(v)
+
+    fun copyImageToInternal(uri: Uri): String? {
+        return try {
+            val ext = when (context.contentResolver.getType(uri)) {
+                "image/png" -> "png"
+                "image/webp" -> "webp"
+                else -> "jpg"
+            }
+            val file = File(context.filesDir, "template_${System.currentTimeMillis()}.$ext")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { input.copyTo(it) }
+            }
+            file.absolutePath
+        } catch (e: Exception) { null }
+    }
 
     private fun startService() {
         val intent = Intent(context, CallMonitorService::class.java)

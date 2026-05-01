@@ -3,6 +3,7 @@ package com.callbacksms.app.viewmodel
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -66,8 +67,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repo.setServiceEnabled(enabled)
     }
 
+    fun copyImageToInternal(uri: Uri): String? = repo.copyImageToInternal(uri)
+
     fun setActiveTemplate(id: Long) = viewModelScope.launch { repo.setActiveTemplateId(id) }
-    fun addTemplate(name: String, content: String) = viewModelScope.launch { repo.addTemplate(name, content) }
+    fun addTemplate(name: String, content: String, imageUri: String? = null) =
+        viewModelScope.launch { repo.addTemplate(name, content, imageUri) }
     fun updateTemplate(t: MessageTemplate) = viewModelScope.launch { repo.updateTemplate(t) }
     fun deleteTemplate(t: MessageTemplate) = viewModelScope.launch { repo.deleteTemplate(t) }
     fun setTriggerOutgoing(v: Boolean) = viewModelScope.launch { repo.setTriggerOutgoing(v) }
@@ -75,5 +79,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setActiveHoursEnabled(v: Boolean) = viewModelScope.launch { repo.setActiveHoursEnabled(v) }
     fun setActiveHours(start: Int, end: Int) = viewModelScope.launch { repo.setActiveHours(start, end) }
     fun setMinCallDuration(v: Int) = viewModelScope.launch { repo.setMinCallDuration(v) }
+    fun setOnlySendTo010(v: Boolean) = viewModelScope.launch { repo.setOnlySendTo010(v) }
     fun clearAllLogs() = viewModelScope.launch { repo.clearAllLogs() }
 }

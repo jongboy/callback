@@ -42,6 +42,13 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
             SectionHeader("트리거 설정", Icons.Default.Tune)
 
             SettingSwitch(
+                title = "010 번호만 발송",
+                subtitle = "010으로 시작하는 번호에만 자동 문자 전송",
+                icon = Icons.Default.PhoneAndroid,
+                checked = settings.onlySendTo010,
+                onChecked = { viewModel.setOnlySendTo010(it) }
+            )
+            SettingSwitch(
                 title = "발신 통화 종료 후",
                 subtitle = "내가 건 전화가 끊기면 자동 문자 전송",
                 icon = Icons.Default.CallMade,

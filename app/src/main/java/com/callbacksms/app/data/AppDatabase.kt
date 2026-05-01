@@ -2,6 +2,7 @@ package com.callbacksms.app.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.callbacksms.app.data.dao.SmsLogDao
 import com.callbacksms.app.data.dao.TemplateDao
 import com.callbacksms.app.data.model.MessageTemplate
@@ -12,7 +13,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [MessageTemplate::class, SmsLog::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,13 +24,21 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE templates ADD COLUMN imageUri TEXT")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "callback_sms_db"
-                ).build()
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
                 INSTANCE = instance
                 CoroutineScope(Dispatchers.IO).launch {
                     if (instance.templateDao().getCount() == 0) {

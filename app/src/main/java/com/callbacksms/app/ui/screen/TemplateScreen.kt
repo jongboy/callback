@@ -1,5 +1,10 @@
 package com.callbacksms.app.ui.screen
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,10 +15,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.callbacksms.app.data.model.MessageTemplate
 import com.callbacksms.app.viewmodel.MainViewModel
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,7 +36,7 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
     Scaffold(
         modifier = Modifier.padding(paddingValues),
         topBar = {
-            TopAppBar(title = { Text("메시지 템플릿", fontWeight = FontWeight.Bold) })
+            TopAppBar(title = { Text("메시지 형식", fontWeight = FontWeight.Bold) })
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
@@ -80,11 +90,12 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
         TemplateDialog(
             title = "새 템플릿",
             initial = MessageTemplate(name = "", content = ""),
-            onConfirm = { name, content ->
-                viewModel.addTemplate(name, content)
+            onConfirm = { name, content, imageUri ->
+                viewModel.addTemplate(name, content, imageUri)
                 showAddDialog = false
             },
-            onDismiss = { showAddDialog = false }
+            onDismiss = { showAddDialog = false },
+            viewModel = viewModel
         )
     }
 
@@ -92,11 +103,12 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
         TemplateDialog(
             title = "템플릿 수정",
             initial = t,
-            onConfirm = { name, content ->
-                viewModel.updateTemplate(t.copy(name = name, content = content))
+            onConfirm = { name, content, imageUri ->
+                viewModel.updateTemplate(t.copy(name = name, content = content, imageUri = imageUri))
                 editingTemplate = null
             },
-            onDismiss = { editingTemplate = null }
+            onDismiss = { editingTemplate = null },
+            viewModel = viewModel
         )
     }
 
@@ -147,6 +159,11 @@ private fun TemplateCard(
                     color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
                             else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f))
+                if (template.imageUri != null) {
+                    Icon(Icons.Default.Image, "이미지 첨부됨", Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (isActive) {
                     SuggestionChip(onClick = {}, label = { Text("사용 중", style = MaterialTheme.typography.labelMedium) })
                 }
@@ -186,11 +203,23 @@ private fun TemplateCard(
 private fun TemplateDialog(
     title: String,
     initial: MessageTemplate,
-    onConfirm: (String, String) -> Unit,
-    onDismiss: () -> Unit
+    onConfirm: (String, String, String?) -> Unit,
+    onDismiss: () -> Unit,
+    viewModel: MainViewModel
 ) {
     var name by remember { mutableStateOf(initial.name) }
     var content by remember { mutableStateOf(initial.content) }
+    var selectedImagePath by remember { mutableStateOf(initial.imageUri) }
+    val context = LocalContext.current
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            val path = viewModel.copyImageToInternal(it)
+            selectedImagePath = path
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -213,11 +242,64 @@ private fun TemplateDialog(
                     modifier = Modifier.fillMaxWidth(),
                     supportingText = { Text("{이름} {시간} {날짜} 변수 사용 가능") }
                 )
+
+                // Image picker
+                if (selectedImagePath != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val bitmap = remember(selectedImagePath) {
+                            selectedImagePath?.let {
+                                try { BitmapFactory.decodeFile(it)?.asImageBitmap() } catch (e: Exception) { null }
+                            }
+                        }
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "첨부 이미지",
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Image, null, Modifier.size(72.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("이미지 첨부됨", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary)
+                            Text("MMS로 전송됩니다", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { selectedImagePath = null }) {
+                            Icon(Icons.Default.Close, "이미지 제거",
+                                tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            imagePicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Image, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("이미지 첨부 (선택)")
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank() && content.isNotBlank()) onConfirm(name.trim(), content.trim()) },
+                onClick = {
+                    if (name.isNotBlank() && content.isNotBlank())
+                        onConfirm(name.trim(), content.trim(), selectedImagePath)
+                },
                 enabled = name.isNotBlank() && content.isNotBlank()
             ) { Text("저장") }
         },

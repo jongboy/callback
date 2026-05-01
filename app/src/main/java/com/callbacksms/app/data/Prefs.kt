@@ -19,7 +19,8 @@ data class AppSettings(
     val activeHoursEnabled: Boolean = false,
     val activeHoursStart: Int = 9,
     val activeHoursEnd: Int = 22,
-    val minCallDuration: Int = 0
+    val minCallDuration: Int = 0,
+    val onlySendTo010: Boolean = false
 )
 
 class Prefs(private val context: Context) {
@@ -33,6 +34,7 @@ class Prefs(private val context: Context) {
         val ACTIVE_HOURS_START = intPreferencesKey("active_hours_start")
         val ACTIVE_HOURS_END = intPreferencesKey("active_hours_end")
         val MIN_CALL_DURATION = intPreferencesKey("min_call_duration")
+        val ONLY_SEND_TO_010 = booleanPreferencesKey("only_send_to_010")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data
@@ -48,7 +50,8 @@ class Prefs(private val context: Context) {
                 activeHoursEnabled = prefs[ACTIVE_HOURS_ENABLED] ?: false,
                 activeHoursStart = prefs[ACTIVE_HOURS_START] ?: 9,
                 activeHoursEnd = prefs[ACTIVE_HOURS_END] ?: 22,
-                minCallDuration = prefs[MIN_CALL_DURATION] ?: 0
+                minCallDuration = prefs[MIN_CALL_DURATION] ?: 0,
+                onlySendTo010 = prefs[ONLY_SEND_TO_010] ?: false
             )
         }
 
@@ -61,4 +64,5 @@ class Prefs(private val context: Context) {
         it[ACTIVE_HOURS_START] = start; it[ACTIVE_HOURS_END] = end
     }
     suspend fun setMinCallDuration(v: Int) = context.dataStore.edit { it[MIN_CALL_DURATION] = v }
+    suspend fun setOnlySendTo010(v: Boolean) = context.dataStore.edit { it[ONLY_SEND_TO_010] = v }
 }

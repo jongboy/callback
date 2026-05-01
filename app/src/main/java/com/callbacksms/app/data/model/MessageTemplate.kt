@@ -10,5 +10,6 @@ data class MessageTemplate(
     val name: String,
     val content: String,
     val isDefault: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val imageUri: String? = null
 )
