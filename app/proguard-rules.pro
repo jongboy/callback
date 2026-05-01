@@ -1,0 +1,2 @@
+-keep class com.callbacksms.app.data.** { *; }
+-keepclassmembers class * extends androidx.room.RoomDatabase { *; }

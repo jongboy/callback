@@ -1,0 +1,51 @@
+name: APK 빌드 & 배포
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: APK 빌드
+        run: gradle assembleDebug
+
+      # 버전 태그 생성 (날짜 기반)
+      - name: 버전 태그 생성
+        id: tag
+        run: echo "tag=v$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_OUTPUT
+
+      # GitHub Release 생성 → 영구 다운로드 링크
+      - name: GitHub Release 업로드
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "콜백SMS ${{ steps.tag.outputs.tag }}"
+          body: |
+            ## 콜백SMS 설치 파일
+
+            아래 **app-debug.apk** 를 다운로드 → 핸드폰에 설치하세요.
+
+            ### 설치 방법
+            1. `app-debug.apk` 다운로드
+            2. 핸드폰 설정 → 보안 → **알 수 없는 앱 설치 허용**
+            3. APK 파일 탭 → 설치
+          files: app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: false
