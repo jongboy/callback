@@ -16,6 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.callbacksms.app.auth.DeviceAuth
 import com.callbacksms.app.ui.Navigation
 import com.callbacksms.app.ui.screen.BlockedScreen
@@ -107,6 +110,20 @@ private fun AuthGate(content: @Composable () -> Unit) {
         val stored = DeviceAuth.getStoredLicense(context)
         if (stored != null) validate(stored)
         else state = AuthState.NeedCode
+    }
+
+    // 포그라운드 복귀 시마다 재검증 — 앱 켜둔 채로 차단해도 돌아오면 잠김
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(Unit) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && state is AuthState.Allowed) {
+                val stored = DeviceAuth.getStoredLicense(context)
+                if (stored != null) validate(stored)
+                else state = AuthState.NeedCode
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     when (val s = state) {

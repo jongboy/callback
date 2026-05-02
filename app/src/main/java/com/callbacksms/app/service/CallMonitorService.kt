@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.callbacksms.app.App
 import com.callbacksms.app.MainActivity
 import com.callbacksms.app.R
+import com.callbacksms.app.auth.DeviceAuth
 import com.callbacksms.app.data.AppDatabase
 import com.callbacksms.app.data.AppSettings
 import com.callbacksms.app.data.Prefs
@@ -260,6 +261,15 @@ class CallMonitorService : Service() {
         callType: Int,
         settings: AppSettings
     ) {
+        // 라이선스 실시간 검증 — 차단됐으면 발송 중단
+        val stored = DeviceAuth.getStoredLicense(applicationContext)
+        if (stored == null) return
+        val allowed = CompletableDeferred<Boolean>()
+        DeviceAuth.validate(applicationContext, stored) { result ->
+            allowed.complete(result is DeviceAuth.Result.Allowed)
+        }
+        if (!allowed.await()) return
+
         val typeId = when (callType) {
             CallLog.Calls.OUTGOING_TYPE -> settings.outgoingTemplateId
             OUTGOING_MISSED_TYPE -> settings.outgoingMissedTemplateId
