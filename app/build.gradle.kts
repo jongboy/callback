@@ -55,6 +55,5 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
-    implementation("com.github.klinker41:android-smsmms:5.2.6")
     debugImplementation(libs.androidx.ui.tooling)
 }
