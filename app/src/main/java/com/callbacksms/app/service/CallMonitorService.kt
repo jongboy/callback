@@ -154,12 +154,14 @@ class CallMonitorService : Service() {
             if (logDuration < settings.minCallDuration) return
             val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
             if (settings.onlySendTo010 && !number.startsWith("010")) return
+            if (database.excludedNumberDao().isExcluded(number) > 0) return
             sendSms(number, name, CallLog.Calls.OUTGOING_TYPE, settings)
         } else {
             // 상대방이 받지 않음
             if (!settings.triggerOutgoingMissed) return
             val (number, name) = getLastCallEntry(CallLog.Calls.OUTGOING_TYPE) ?: return
             if (settings.onlySendTo010 && !number.startsWith("010")) return
+            if (database.excludedNumberDao().isExcluded(number) > 0) return
             sendSms(number, name, OUTGOING_MISSED_TYPE, settings)
         }
     }
@@ -176,6 +178,7 @@ class CallMonitorService : Service() {
             ?: savedIncomingNumber?.let { Pair(it, getContactName(it)) }
             ?: return
         if (settings.onlySendTo010 && !number.startsWith("010")) return
+        if (database.excludedNumberDao().isExcluded(number) > 0) return
         sendSms(number, name, CallLog.Calls.INCOMING_TYPE, settings)
     }
 
@@ -190,6 +193,7 @@ class CallMonitorService : Service() {
             ?: fallbackNumber?.let { Pair(it, getContactName(it)) }
             ?: return
         if (settings.onlySendTo010 && !number.startsWith("010")) return
+        if (database.excludedNumberDao().isExcluded(number) > 0) return
         sendSms(number, name, CallLog.Calls.MISSED_TYPE, settings)
     }
 

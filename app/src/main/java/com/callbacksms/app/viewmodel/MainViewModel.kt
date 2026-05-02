@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.callbacksms.app.data.AppSettings
+import com.callbacksms.app.data.model.ExcludedNumber
 import com.callbacksms.app.data.model.MessageTemplate
 import com.callbacksms.app.data.model.SmsLog
 import com.callbacksms.app.repository.AppRepository
@@ -19,6 +20,7 @@ data class UiState(
     val settings: AppSettings = AppSettings(),
     val templates: List<MessageTemplate> = emptyList(),
     val smsLogs: List<SmsLog> = emptyList(),
+    val excludedNumbers: List<ExcludedNumber> = emptyList(),
     val hasPermissions: Boolean = false,
     val isLoading: Boolean = true
 )
@@ -30,11 +32,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            combine(repo.settings, repo.templates, repo.smsLogs) { s, t, l ->
+            combine(repo.settings, repo.templates, repo.smsLogs, repo.excludedNumbers) { s, t, l, ex ->
                 UiState(
                     settings = s,
                     templates = t,
                     smsLogs = l,
+                    excludedNumbers = ex,
                     hasPermissions = checkPermissions(),
                     isLoading = false
                 )
@@ -87,4 +90,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setMissedTemplateId(id: Long) = viewModelScope.launch { repo.setMissedTemplateId(id) }
     fun setIncomingTemplateId(id: Long) = viewModelScope.launch { repo.setIncomingTemplateId(id) }
     fun clearAllLogs() = viewModelScope.launch { repo.clearAllLogs() }
+
+    fun addExcludedNumber(number: String, name: String?) =
+        viewModelScope.launch { repo.addExcludedNumber(number.trim(), name) }
+    fun removeExcludedNumber(entry: ExcludedNumber) =
+        viewModelScope.launch { repo.removeExcludedNumber(entry) }
 }

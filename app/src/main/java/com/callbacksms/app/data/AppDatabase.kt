@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.callbacksms.app.data.dao.ExcludedNumberDao
 import com.callbacksms.app.data.dao.SmsLogDao
 import com.callbacksms.app.data.dao.TemplateDao
+import com.callbacksms.app.data.model.ExcludedNumber
 import com.callbacksms.app.data.model.MessageTemplate
 import com.callbacksms.app.data.model.SmsLog
 import kotlinx.coroutines.CoroutineScope
@@ -13,13 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [MessageTemplate::class, SmsLog::class],
-    version = 2,
+    entities = [MessageTemplate::class, SmsLog::class, ExcludedNumber::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun templateDao(): TemplateDao
     abstract fun smsLogDao(): SmsLogDao
+    abstract fun excludedNumberDao(): ExcludedNumberDao
 
     companion object {
         @Volatile
@@ -31,6 +34,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS excluded_numbers (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "phoneNumber TEXT NOT NULL, " +
+                    "contactName TEXT, " +
+                    "addedAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -38,7 +53,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "callback_sms_db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 CoroutineScope(Dispatchers.IO).launch {

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import com.callbacksms.app.data.AppDatabase
 import com.callbacksms.app.data.Prefs
+import com.callbacksms.app.data.model.ExcludedNumber
 import com.callbacksms.app.data.model.MessageTemplate
 import com.callbacksms.app.service.CallMonitorService
 import java.io.File
@@ -17,6 +18,7 @@ class AppRepository(private val context: Context) {
     val templates = db.templateDao().getAllTemplates()
     val smsLogs = db.smsLogDao().getAllLogs()
     val settings = prefs.settingsFlow
+    val excludedNumbers = db.excludedNumberDao().getAll()
 
     suspend fun addTemplate(name: String, content: String, imageUri: String? = null) =
         db.templateDao().insert(MessageTemplate(name = name, content = content, imageUri = imageUri))
@@ -28,6 +30,12 @@ class AppRepository(private val context: Context) {
     }
     suspend fun setDefaultTemplate(id: Long) = db.templateDao().setDefaultTemplate(id)
     suspend fun clearAllLogs() = db.smsLogDao().deleteAll()
+
+    suspend fun addExcludedNumber(number: String, name: String?) =
+        db.excludedNumberDao().insert(ExcludedNumber(phoneNumber = number, contactName = name))
+    suspend fun removeExcludedNumber(entry: ExcludedNumber) = db.excludedNumberDao().delete(entry)
+    suspend fun isNumberExcluded(number: String): Boolean =
+        db.excludedNumberDao().isExcluded(number) > 0
 
     suspend fun setServiceEnabled(enabled: Boolean) {
         prefs.setServiceEnabled(enabled)

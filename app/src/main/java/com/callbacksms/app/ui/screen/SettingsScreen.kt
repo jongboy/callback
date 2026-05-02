@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.callbacksms.app.data.model.ExcludedNumber
 import com.callbacksms.app.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -19,8 +20,10 @@ import com.callbacksms.app.viewmodel.MainViewModel
 fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
     val state by viewModel.state.collectAsState()
     val settings = state.settings
+    val excludedNumbers = state.excludedNumbers
     var showHourPicker by remember { mutableStateOf<String?>(null) }
     var minDurationInput by remember { mutableStateOf(settings.minCallDuration.toString()) }
+    var showAddExclusionDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(settings.minCallDuration) {
         minDurationInput = settings.minCallDuration.toString()
@@ -178,6 +181,67 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            // ── 문자 제외 번호
+            SectionHeader("문자 보내지 않을 번호", Icons.Default.Block)
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "등록된 번호에서 전화가 오거나 걸어도 문자를 보내지 않아요",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (excludedNumbers.isEmpty()) {
+                        Text(
+                            "제외된 번호 없음",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    } else {
+                        excludedNumbers.forEach { entry ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Block, null, Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        entry.contactName ?: entry.phoneNumber,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (entry.contactName != null) {
+                                        Text(entry.phoneNumber,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                IconButton(onClick = { viewModel.removeExcludedNumber(entry) }) {
+                                    Icon(Icons.Default.Close, "삭제",
+                                        Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { showAddExclusionDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("번호 추가")
+                    }
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // ── 앱 정보
             SectionHeader("앱 정보", Icons.Default.Info)
             Card(
@@ -205,6 +269,16 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 showHourPicker = null
             },
             onDismiss = { showHourPicker = null }
+        )
+    }
+
+    if (showAddExclusionDialog) {
+        AddExclusionDialog(
+            onConfirm = { number, name ->
+                viewModel.addExcludedNumber(number, name.ifBlank { null })
+                showAddExclusionDialog = false
+            },
+            onDismiss = { showAddExclusionDialog = false }
         )
     }
 }
@@ -291,6 +365,48 @@ private fun HourPickerDialog(
         },
         confirmButton = {
             Button(onClick = { onConfirm(selected) }) { Text("확인") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
+}
+
+@Composable
+private fun AddExclusionDialog(
+    onConfirm: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var number by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("제외할 번호 추가") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { number = it },
+                    label = { Text("전화번호") },
+                    placeholder = { Text("010-0000-0000") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("이름 (선택)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (number.isNotBlank()) onConfirm(number.trim(), name.trim()) },
+                enabled = number.isNotBlank()
+            ) { Text("추가") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("취소") }
