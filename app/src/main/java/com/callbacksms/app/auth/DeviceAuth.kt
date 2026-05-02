@@ -8,14 +8,16 @@ import javax.net.ssl.HttpsURLConnection
 object DeviceAuth {
 
     // ★ Firebase 콘솔 → Realtime Database → URL 복사 후 입력
-    //   예: "https://my-project-default-rtdb.firebaseio.com"
-    //   비워두면 인증 비활성화 (개발용)
     const val FIREBASE_DB_URL = ""
+
+    // ★ 관리자 전용 코드 — 원하는 값으로 변경 후 재빌드
+    const val ADMIN_CODE = "ADMIN0000"
 
     private const val PREF_NAME = "device_auth"
     private const val KEY_LICENSE = "license_key"
 
     fun isConfigured() = FIREBASE_DB_URL.isNotBlank()
+    fun isAdminCode(key: String) = key.uppercase().trim() == ADMIN_CODE
 
     fun getDeviceId(context: Context): String =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
@@ -32,6 +34,8 @@ object DeviceAuth {
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .edit().remove(KEY_LICENSE).apply()
 
+    // ─── 라이선스 검증 ───────────────────────────────────────────────
+
     sealed class Result {
         object Allowed : Result()
         data class Denied(val reason: String) : Result()
@@ -46,14 +50,8 @@ object DeviceAuth {
 
         Thread {
             val result = try {
-                // 1. 라이선스 정보 조회
                 val licenseJson = httpGet("$FIREBASE_DB_URL/licenses/$key.json")
-                    ?: return@Thread onResult(
-                        android.os.Handler(android.os.Looper.getMainLooper()).let {
-                            it.post { onResult(Result.Denied("유효하지 않은 코드입니다")) }
-                            return@Thread
-                        }
-                    )
+                    ?: return@Thread post { onResult(Result.Denied("유효하지 않은 코드입니다")) }
 
                 if (licenseJson == "null") {
                     Result.Denied("유효하지 않은 코드입니다")
@@ -71,13 +69,8 @@ object DeviceAuth {
                         !alreadyRegistered && deviceCount >= maxDevices ->
                             Result.Denied("이 코드는 최대 ${maxDevices}대까지 사용 가능합니다\n(현재 ${deviceCount}대 등록됨)")
                         else -> {
-                            // 2. 이 기기가 아직 미등록이면 Firebase에 등록
-                            if (!alreadyRegistered) {
-                                httpPut(
-                                    "$FIREBASE_DB_URL/licenses/$key/devices/$deviceId.json",
-                                    "true"
-                                )
-                            }
+                            if (!alreadyRegistered)
+                                httpPut("$FIREBASE_DB_URL/licenses/$key/devices/$deviceId.json", "true")
                             Result.Allowed
                         }
                     }
@@ -85,10 +78,85 @@ object DeviceAuth {
             } catch (_: Exception) {
                 Result.NetworkError
             }
-
-            android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(result) }
+            post { onResult(result) }
         }.start()
     }
+
+    // ─── 관리자용 CRUD ───────────────────────────────────────────────
+
+    data class LicenseInfo(
+        val code: String,
+        val active: Boolean,
+        val maxDevices: Int,
+        val note: String,
+        val deviceCount: Int
+    )
+
+    fun getAllLicenses(onResult: (List<LicenseInfo>?) -> Unit) {
+        Thread {
+            val result = try {
+                val json = httpGet("$FIREBASE_DB_URL/licenses.json")
+                when {
+                    json == null -> null
+                    json == "null" -> emptyList()
+                    else -> {
+                        val obj = JSONObject(json)
+                        obj.keys().asSequence().map { key ->
+                            val item = obj.getJSONObject(key)
+                            LicenseInfo(
+                                code = key,
+                                active = item.optBoolean("active", false),
+                                maxDevices = item.optInt("maxDevices", 1),
+                                note = item.optString("note", ""),
+                                deviceCount = item.optJSONObject("devices")?.length() ?: 0
+                            )
+                        }.sortedBy { it.code }.toList()
+                    }
+                }
+            } catch (_: Exception) { null }
+            post { onResult(result) }
+        }.start()
+    }
+
+    fun createLicense(code: String, maxDevices: Int, note: String, onResult: (Boolean) -> Unit) {
+        Thread {
+            val result = try {
+                val body = JSONObject().apply {
+                    put("active", true)
+                    put("maxDevices", maxDevices)
+                    if (note.isNotBlank()) put("note", note)
+                }.toString()
+                httpPut("$FIREBASE_DB_URL/licenses/${code.uppercase().trim()}.json", body)
+                true
+            } catch (_: Exception) { false }
+            post { onResult(result) }
+        }.start()
+    }
+
+    fun setLicenseActive(code: String, active: Boolean, onResult: (Boolean) -> Unit) {
+        Thread {
+            val result = try {
+                httpPatch("$FIREBASE_DB_URL/licenses/$code.json", """{"active":$active}""")
+                true
+            } catch (_: Exception) { false }
+            post { onResult(result) }
+        }.start()
+    }
+
+    fun deleteLicense(code: String, onResult: (Boolean) -> Unit) {
+        Thread {
+            val result = try {
+                httpDelete("$FIREBASE_DB_URL/licenses/$code.json")
+                true
+            } catch (_: Exception) { false }
+            post { onResult(result) }
+        }.start()
+    }
+
+    // ─── HTTP 헬퍼 ───────────────────────────────────────────────────
+
+    private fun post(block: () -> Unit) =
+        android.os.Handler(android.os.Looper.getMainLooper()).post(block)
 
     private fun httpGet(url: String): String? {
         val conn = java.net.URL(url).openConnection() as HttpsURLConnection
@@ -96,8 +164,7 @@ object DeviceAuth {
             conn.connectTimeout = 8_000
             conn.readTimeout = 8_000
             conn.requestMethod = "GET"
-            if (conn.responseCode == 200)
-                conn.inputStream.bufferedReader().readText().trim()
+            if (conn.responseCode == 200) conn.inputStream.bufferedReader().readText().trim()
             else null
         } finally {
             conn.disconnect()
@@ -113,7 +180,36 @@ object DeviceAuth {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             conn.outputStream.use { it.write(body.toByteArray()) }
-            conn.responseCode // 전송 확정
+            conn.responseCode
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    // Firebase REST는 POST + X-HTTP-Method-Override 로 PATCH 구현
+    private fun httpPatch(url: String, body: String) {
+        val conn = java.net.URL(url).openConnection() as HttpsURLConnection
+        try {
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            conn.responseCode
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun httpDelete(url: String) {
+        val conn = java.net.URL(url).openConnection() as HttpsURLConnection
+        try {
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.requestMethod = "DELETE"
+            conn.responseCode
         } finally {
             conn.disconnect()
         }
