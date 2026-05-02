@@ -10,10 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.callbacksms.app.auth.DeviceAuth
@@ -247,33 +244,18 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // ── 기기 정보
+            // ── 라이선스
             if (DeviceAuth.isConfigured()) {
                 val context = LocalContext.current
-                val clipboard = LocalClipboardManager.current
-                var copied by remember { mutableStateOf(false) }
-                val deviceId = remember { DeviceAuth.getDeviceId(context) }
+                val licenseKey = remember { DeviceAuth.getStoredLicense(context) }
 
-                SectionHeader("기기 정보", Icons.Default.PhoneAndroid)
+                SectionHeader("라이선스", Icons.Default.VpnKey)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("내 기기 ID", style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(deviceId,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium)
-                        OutlinedButton(
-                            onClick = { clipboard.setText(AnnotatedString(deviceId)); copied = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (copied) "복사됨!" else "ID 복사")
-                        }
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        InfoRow("코드", licenseKey ?: "미입력")
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

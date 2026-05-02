@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.callbacksms.app.auth.DeviceAuth
 import com.callbacksms.app.ui.Navigation
 import com.callbacksms.app.ui.screen.BlockedScreen
+import com.callbacksms.app.ui.screen.LicenseInputScreen
 import com.callbacksms.app.ui.theme.CallbackSMSTheme
 import com.callbacksms.app.viewmodel.MainViewModel
 
@@ -63,27 +64,93 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// null = 확인 중, true = 승인, false = 차단
+private sealed class AuthState {
+    object Loading : AuthState()
+    object Allowed : AuthState()
+    object NeedCode : AuthState()
+    data class Checking(val key: String) : AuthState()
+    data class Denied(val reason: String) : AuthState()
+    object NetworkError : AuthState()
+}
+
 @Composable
 private fun AuthGate(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    var authState by remember { mutableStateOf<Boolean?>(null) }
+    var state by remember { mutableStateOf<AuthState>(AuthState.Loading) }
+    var inputError by remember { mutableStateOf<String?>(null) }
 
-    fun doCheck() {
-        authState = null
-        DeviceAuth.check(context) { authState = it }
+    fun validate(key: String) {
+        state = AuthState.Checking(key)
+        inputError = null
+        DeviceAuth.validate(context, key) { result ->
+            when (result) {
+                DeviceAuth.Result.Allowed -> {
+                    DeviceAuth.saveLicense(context, key)
+                    state = AuthState.Allowed
+                }
+                is DeviceAuth.Result.Denied -> {
+                    if (state is AuthState.Checking) {
+                        // 코드 입력 중 실패 → 입력 화면에 오류 표시
+                        inputError = result.reason
+                        state = AuthState.NeedCode
+                    } else {
+                        state = AuthState.Denied(result.reason)
+                    }
+                }
+                DeviceAuth.Result.NetworkError -> state = AuthState.NetworkError
+            }
+        }
     }
 
-    LaunchedEffect(Unit) { doCheck() }
+    // 앱 시작 시: 저장된 코드가 있으면 자동 검증
+    LaunchedEffect(Unit) {
+        val stored = DeviceAuth.getStoredLicense(context)
+        if (stored != null) validate(stored)
+        else state = AuthState.NeedCode
+    }
 
-    when (authState) {
-        null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+    when (val s = state) {
+        AuthState.Loading, is AuthState.Checking -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         }
-        true -> content()
-        false -> BlockedScreen(
-            deviceId = DeviceAuth.getDeviceId(context),
-            onRetry = { doCheck() }
+        AuthState.Allowed -> content()
+
+        AuthState.NeedCode -> LicenseInputScreen(
+            isLoading = false,
+            errorMessage = inputError,
+            onSubmit = { key -> validate(key) }
+        )
+
+        is AuthState.Denied -> BlockedScreen(
+            reason = s.reason,
+            isNetworkError = false,
+            onRetry = {
+                val stored = DeviceAuth.getStoredLicense(context)
+                if (stored != null) validate(stored)
+                else state = AuthState.NeedCode
+            },
+            onEnterNewCode = {
+                DeviceAuth.clearLicense(context)
+                inputError = null
+                state = AuthState.NeedCode
+            }
+        )
+
+        AuthState.NetworkError -> BlockedScreen(
+            reason = "인터넷 연결을 확인하고 다시 시도해주세요",
+            isNetworkError = true,
+            onRetry = {
+                val stored = DeviceAuth.getStoredLicense(context)
+                if (stored != null) validate(stored)
+                else state = AuthState.NeedCode
+            },
+            onEnterNewCode = {
+                DeviceAuth.clearLicense(context)
+                inputError = null
+                state = AuthState.NeedCode
+            }
         )
     }
 }
