@@ -82,6 +82,7 @@ private fun AuthGate(content: @Composable () -> Unit) {
     var state by remember { mutableStateOf<AuthState>(AuthState.Loading) }
     var inputError by remember { mutableStateOf<String?>(null) }
 
+    // 최초 진입 / 코드 입력 시: 로딩 스피너 표시
     fun validate(key: String) {
         state = AuthState.Checking(key)
         inputError = null
@@ -104,6 +105,17 @@ private fun AuthGate(content: @Composable () -> Unit) {
         }
     }
 
+    // 포그라운드 복귀 시: 조용히 백그라운드 검증 (스피너 없음 — Checking 상태로 가면 Navigation 재생성되어 홈 탭 초기화됨)
+    fun validateSilent(key: String) {
+        DeviceAuth.validate(context, key) { result ->
+            when (result) {
+                DeviceAuth.Result.Allowed -> { /* 정상, 유지 */ }
+                is DeviceAuth.Result.Denied -> state = AuthState.Denied(result.reason)
+                DeviceAuth.Result.NetworkError -> { /* 네트워크 오류는 무시하고 계속 사용 허용 */ }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         val stored = DeviceAuth.getStoredLicense(context)
         if (stored != null) validate(stored)
@@ -116,7 +128,7 @@ private fun AuthGate(content: @Composable () -> Unit) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && state == AuthState.Allowed) {
                 val stored = DeviceAuth.getStoredLicense(context)
-                if (stored != null) validate(stored)
+                if (stored != null) validateSilent(stored)
                 else state = AuthState.NeedCode
             }
         }
