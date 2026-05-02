@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [MessageTemplate::class, SmsLog::class, ExcludedNumber::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,6 +46,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "DELETE FROM templates WHERE name IN ('간단 메시지', '이름 포함', '부재중 답장')"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -53,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "callback_sms_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                 INSTANCE = instance
                 CoroutineScope(Dispatchers.IO).launch {
@@ -70,21 +78,6 @@ abstract class AppDatabase : RoomDatabase() {
                 name = "기본 메시지",
                 content = "안녕하세요! 방금 전화를 드렸는데 연결이 되지 않았네요. 편하실 때 다시 연락 부탁드립니다 😊",
                 isDefault = true
-            ))
-            dao.insert(MessageTemplate(
-                name = "간단 메시지",
-                content = "방금 전화했어요. 나중에 연락 주세요!",
-                isDefault = false
-            ))
-            dao.insert(MessageTemplate(
-                name = "이름 포함",
-                content = "{이름}님, 안녕하세요. 잠시 전 전화드렸으나 연결이 안 되어 문자 남깁니다. 편하신 시간에 회신 부탁드립니다.",
-                isDefault = false
-            ))
-            dao.insert(MessageTemplate(
-                name = "부재중 답장",
-                content = "전화 주셨군요! {시간}에 확인했습니다. 곧 다시 연락드릴게요.",
-                isDefault = false
             ))
         }
     }

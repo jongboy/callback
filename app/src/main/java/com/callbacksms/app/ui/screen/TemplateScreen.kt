@@ -36,6 +36,16 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
     var editingTemplate by remember { mutableStateOf<MessageTemplate?>(null) }
     var deleteTarget by remember { mutableStateOf<MessageTemplate?>(null) }
 
+    // 이미지 피커를 최상위에 등록 — 조건부 컴포저블 안에 두면 피커 복귀 시 상태 초기화로 홈 이동 버그 발생
+    var imagePickCallback by remember { mutableStateOf<((String?) -> Unit)?>(null) }
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val path = uri?.let { viewModel.copyImageToInternal(it) }
+        imagePickCallback?.invoke(path)
+        imagePickCallback = null
+    }
+
     Scaffold(
         modifier = Modifier.padding(paddingValues),
         topBar = {
@@ -135,7 +145,10 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 showAddDialog = false
             },
             onDismiss = { showAddDialog = false },
-            viewModel = viewModel
+            onPickImage = { callback ->
+                imagePickCallback = callback
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         )
     }
 
@@ -148,7 +161,10 @@ fun TemplateScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 editingTemplate = null
             },
             onDismiss = { editingTemplate = null },
-            viewModel = viewModel
+            onPickImage = { callback ->
+                imagePickCallback = callback
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         )
     }
 
@@ -330,18 +346,11 @@ private fun TemplateDialog(
     initial: MessageTemplate,
     onConfirm: (String, String, String?) -> Unit,
     onDismiss: () -> Unit,
-    viewModel: MainViewModel
+    onPickImage: ((String?) -> Unit) -> Unit
 ) {
     var name by remember { mutableStateOf(initial.name) }
     var content by remember { mutableStateOf(initial.content) }
     var selectedImagePath by remember { mutableStateOf(initial.imageUri) }
-    val context = LocalContext.current
-
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        uri?.let { selectedImagePath = viewModel.copyImageToInternal(it) }
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -395,7 +404,7 @@ private fun TemplateDialog(
                 } else {
                     OutlinedButton(
                         onClick = {
-                            imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            onPickImage { path -> if (path != null) selectedImagePath = path }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
