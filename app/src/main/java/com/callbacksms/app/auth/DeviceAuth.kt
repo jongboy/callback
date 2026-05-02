@@ -8,7 +8,7 @@ import javax.net.ssl.HttpsURLConnection
 object DeviceAuth {
 
     // ★ Firebase 콘솔 → Realtime Database → URL 복사 후 입력
-    const val FIREBASE_DB_URL = ""
+    const val FIREBASE_DB_URL = "https://callback-fc822-default-rtdb.asia-southeast1.firebasedatabase.app"
 
     // ★ 관리자 전용 코드 — 원하는 값으로 변경 후 재빌드
     const val ADMIN_CODE = "ADMIN0000"
