@@ -11,7 +11,7 @@ object DeviceAuth {
     const val FIREBASE_DB_URL = "https://callback-fc822-default-rtdb.asia-southeast1.firebasedatabase.app"
 
     // ★ 관리자 전용 코드 — 원하는 값으로 변경 후 재빌드
-    const val ADMIN_CODE = "ADMIN0000"
+    const val ADMIN_CODE = "482655"
 
     private const val PREF_NAME = "device_auth"
     private const val KEY_LICENSE = "license_key"
