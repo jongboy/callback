@@ -285,10 +285,10 @@ class CallMonitorService : Service() {
         try {
             val imageUri = template.imageUri
             if (imageUri != null) {
-                val mmsSent = MmsSender.send(this, phoneNumber, message, imageUri)
+                val (mmsSent, mmsError) = MmsSender.send(this, phoneNumber, message, imageUri)
                 if (!mmsSent) {
-                    // MMS 실패 → 텍스트 SMS로 대체 전송
-                    errorMsg = "이미지 전송 실패 (문자만 전송됨)"
+                    // MMS 실패 → 텍스트 SMS로 대체 전송, 실제 에러 메시지 기록
+                    errorMsg = "이미지 전송 실패: $mmsError (문자만 전송됨)"
                     val sms = getSmsManager()
                     val parts = sms.divideMessage(message)
                     if (parts.size == 1) sms.sendTextMessage(phoneNumber, null, message, null, null)

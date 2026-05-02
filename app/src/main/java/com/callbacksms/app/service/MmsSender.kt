@@ -11,10 +11,11 @@ import java.io.File
 
 object MmsSender {
 
-    fun send(context: Context, to: String, text: String, imagePath: String): Boolean {
+    // Boolean: 성공 여부, String?: 실패 시 에러 메시지
+    fun send(context: Context, to: String, text: String, imagePath: String): Pair<Boolean, String?> {
         return try {
             val imageFile = File(imagePath)
-            if (!imageFile.exists()) return false
+            if (!imageFile.exists()) return Pair(false, "이미지 파일 없음: $imagePath")
             val imageBytes = imageFile.readBytes()
             val mimeType = when (imageFile.extension.lowercase()) {
                 "png" -> "image/png"
@@ -30,13 +31,12 @@ object MmsSender {
                 context, "${context.packageName}.fileprovider", tmpFile
             )
 
-            // telephony 시스템 프로세스가 FileProvider URI를 읽을 수 있도록 권한 부여
             grantUriToTelephony(context, uri)
 
             getSmsManager(context).sendMultimediaMessage(context, uri, null, null, null)
-            true
+            Pair(true, null)
         } catch (e: Exception) {
-            false
+            Pair(false, "${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
@@ -51,7 +51,6 @@ object MmsSender {
         ).forEach { pkg ->
             try { context.grantUriPermission(pkg, uri, flag) } catch (_: Exception) {}
         }
-        // 기기의 기본 SMS 앱에도 권한 부여
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             android.provider.Telephony.Sms.getDefaultSmsPackage(context)?.let { pkg ->
                 try { context.grantUriPermission(pkg, uri, flag) } catch (_: Exception) {}
@@ -62,19 +61,15 @@ object MmsSender {
     private fun buildPdu(to: String, text: String, imageBytes: ByteArray, mimeType: String): ByteArray {
         val out = ByteArrayOutputStream()
 
-        // X-Mms-Message-Type: m-send-req
         out.write(0x8C); out.write(0x80)
 
-        // X-Mms-Transaction-ID
         val txId = System.currentTimeMillis().toString().toByteArray(Charsets.US_ASCII)
         out.write(0x98)
         writeUintVar(out, txId.size + 1)
         out.write(txId); out.write(0)
 
-        // X-Mms-MMS-Version: 1.0
         out.write(0x8D); out.write(0x90)
 
-        // Date (4-byte unix seconds)
         val secs = System.currentTimeMillis() / 1000
         out.write(0x85); out.write(4)
         out.write((secs shr 24).toInt() and 0xFF)
@@ -82,23 +77,17 @@ object MmsSender {
         out.write((secs shr 8).toInt() and 0xFF)
         out.write(secs.toInt() and 0xFF)
 
-        // From: insert-address
         out.write(0x89); out.write(1); out.write(0x81)
 
-        // To: phone/TYPE=PLMN
         val toBytes = "$to/TYPE=PLMN".toByteArray(Charsets.US_ASCII)
         out.write(0x97)
         writeUintVar(out, toBytes.size + 1)
         out.write(toBytes); out.write(0)
 
-        // Content-Type: application/vnd.wap.multipart.mixed
         out.write(0x84); out.write(0xA3.toByte().toInt())
 
-        // Body: 2 parts
         writeUintVar(out, 2)
 
-        // Part 1: text/plain; charset=utf-8
-        // value-length(3) | text/plain(0x83) | charset-param(0x01) | UTF-8(0xEA)
         val textBytes = text.toByteArray(Charsets.UTF_8)
         val textHdr = byteArrayOf(0x03, 0x83.toByte(), 0x01, 0xEA.toByte())
         writeUintVar(out, textHdr.size)
@@ -106,12 +95,9 @@ object MmsSender {
         out.write(textHdr)
         out.write(textBytes)
 
-        // Part 2: image
-        // WSP short integer 코드 대신 null 종료 문자열로 인코딩 (단말기/통신사 호환성 최대화)
-        val mimeBytes = mimeType.toByteArray(Charsets.US_ASCII)
         val imgHdr = ByteArrayOutputStream().apply {
-            write(mimeBytes)
-            write(0) // null terminator
+            write(mimeType.toByteArray(Charsets.US_ASCII))
+            write(0)
         }.toByteArray()
         writeUintVar(out, imgHdr.size)
         writeUintVar(out, imageBytes.size)
