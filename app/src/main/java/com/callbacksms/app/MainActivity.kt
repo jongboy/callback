@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
 private sealed class AuthState {
     object Loading : AuthState()
     object Admin : AuthState()
+    object AdminAllowed : AuthState()  // 관리자가 앱 사용 중
     object Allowed : AuthState()
     object NeedCode : AuthState()
     data class Checking(val key: String) : AuthState()
@@ -147,8 +148,10 @@ private fun AuthGate(content: @Composable () -> Unit) {
                 DeviceAuth.clearLicense(context)
                 inputError = null
                 state = AuthState.NeedCode
-            }
+            },
+            onUseApp = { state = AuthState.AdminAllowed }
         )
+        AuthState.AdminAllowed -> content()
         AuthState.Allowed -> content()
 
         AuthState.NeedCode -> LicenseInputScreen(

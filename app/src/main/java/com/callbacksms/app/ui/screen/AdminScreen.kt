@@ -19,7 +19,7 @@ import com.callbacksms.app.auth.DeviceAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminScreen(onLogout: () -> Unit) {
+fun AdminScreen(onLogout: () -> Unit, onUseApp: () -> Unit) {
     var licenses by remember { mutableStateOf<List<DeviceAuth.LicenseInfo>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -53,7 +53,9 @@ fun AdminScreen(onLogout: () -> Unit) {
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(24.dp))
-            OutlinedButton(onClick = onLogout) { Text("나가기") }
+            Button(onClick = onUseApp) { Text("앱 사용하기") }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onLogout) { Text("로그아웃") }
         }
         return
     }
@@ -65,6 +67,9 @@ fun AdminScreen(onLogout: () -> Unit) {
                 actions = {
                     IconButton(onClick = { reload() }, enabled = !isLoading) {
                         Icon(Icons.Default.Refresh, "새로고침")
+                    }
+                    IconButton(onClick = onUseApp) {
+                        Icon(Icons.Default.PhoneAndroid, "앱 사용하기")
                     }
                     IconButton(onClick = onLogout) {
                         Icon(Icons.Default.ExitToApp, "로그아웃")
