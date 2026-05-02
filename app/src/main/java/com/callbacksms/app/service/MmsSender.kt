@@ -1,6 +1,8 @@
 package com.callbacksms.app.service
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.telephony.SmsManager
 import androidx.core.content.FileProvider
@@ -27,10 +29,33 @@ object MmsSender {
             val uri = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", tmpFile
             )
+
+            // telephony 시스템 프로세스가 FileProvider URI를 읽을 수 있도록 권한 부여
+            grantUriToTelephony(context, uri)
+
             getSmsManager(context).sendMultimediaMessage(context, uri, null, null, null)
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    private fun grantUriToTelephony(context: Context, uri: Uri) {
+        val flag = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        listOf(
+            "android",
+            "com.android.phone",
+            "com.android.providers.telephony",
+            "com.android.mms",
+            "com.android.mms.service"
+        ).forEach { pkg ->
+            try { context.grantUriPermission(pkg, uri, flag) } catch (_: Exception) {}
+        }
+        // 기기의 기본 SMS 앱에도 권한 부여
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            android.provider.Telephony.Sms.getDefaultSmsPackage(context)?.let { pkg ->
+                try { context.grantUriPermission(pkg, uri, flag) } catch (_: Exception) {}
+            }
         }
     }
 
@@ -66,15 +91,15 @@ object MmsSender {
         writeUintVar(out, toBytes.size + 1)
         out.write(toBytes); out.write(0)
 
-        // Content-Type: application/vnd.wap.multipart.mixed (0x23 | 0x80 = 0xA3)
+        // Content-Type: application/vnd.wap.multipart.mixed
         out.write(0x84); out.write(0xA3.toByte().toInt())
 
         // Body: 2 parts
         writeUintVar(out, 2)
 
         // Part 1: text/plain; charset=utf-8
+        // value-length(3) | text/plain(0x83) | charset-param(0x01) | UTF-8(0xEA)
         val textBytes = text.toByteArray(Charsets.UTF_8)
-        // Header: value-length(3) + text/plain(0x83) + charset(0x01) + UTF-8(0xEA)
         val textHdr = byteArrayOf(0x03, 0x83.toByte(), 0x01, 0xEA.toByte())
         writeUintVar(out, textHdr.size)
         writeUintVar(out, textBytes.size)
@@ -82,11 +107,12 @@ object MmsSender {
         out.write(textBytes)
 
         // Part 2: image
-        val imgTypeCode = when (mimeType) {
-            "image/png" -> 0x9F  // image/png WSP short integer
-            else -> 0x9E         // image/jpeg WSP short integer
-        }
-        val imgHdr = byteArrayOf(imgTypeCode.toByte())
+        // WSP short integer 코드 대신 null 종료 문자열로 인코딩 (단말기/통신사 호환성 최대화)
+        val mimeBytes = mimeType.toByteArray(Charsets.US_ASCII)
+        val imgHdr = ByteArrayOutputStream().apply {
+            write(mimeBytes)
+            write(0) // null terminator
+        }.toByteArray()
         writeUintVar(out, imgHdr.size)
         writeUintVar(out, imageBytes.size)
         out.write(imgHdr)
