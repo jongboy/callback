@@ -155,8 +155,9 @@ object DeviceAuth {
 
     // ─── HTTP 헬퍼 ───────────────────────────────────────────────────
 
-    private fun post(block: () -> Unit) =
+    private fun post(block: () -> Unit) {
         android.os.Handler(android.os.Looper.getMainLooper()).post(block)
+    }
 
     private fun httpGet(url: String): String? {
         val conn = java.net.URL(url).openConnection() as HttpsURLConnection
