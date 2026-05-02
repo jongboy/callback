@@ -21,7 +21,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.callbacksms.app.auth.DeviceAuth
 import com.callbacksms.app.ui.Navigation
-import com.callbacksms.app.ui.screen.AdminScreen
 import com.callbacksms.app.ui.screen.BlockedScreen
 import com.callbacksms.app.ui.screen.LicenseInputScreen
 import com.callbacksms.app.ui.theme.CallbackSMSTheme
@@ -70,8 +69,6 @@ class MainActivity : ComponentActivity() {
 
 private sealed class AuthState {
     object Loading : AuthState()
-    object Admin : AuthState()
-    object AdminAllowed : AuthState()  // 관리자가 앱 사용 중
     object Allowed : AuthState()
     object NeedCode : AuthState()
     data class Checking(val key: String) : AuthState()
@@ -86,12 +83,6 @@ private fun AuthGate(content: @Composable () -> Unit) {
     var inputError by remember { mutableStateOf<String?>(null) }
 
     fun validate(key: String) {
-        // 관리자 코드면 Firebase 검증 없이 바로 관리자 화면으로
-        if (DeviceAuth.isAdminCode(key)) {
-            DeviceAuth.saveLicense(context, key)
-            state = AuthState.Admin
-            return
-        }
         state = AuthState.Checking(key)
         inputError = null
         DeviceAuth.validate(context, key) { result ->
@@ -113,17 +104,13 @@ private fun AuthGate(content: @Composable () -> Unit) {
         }
     }
 
-    // 앱 시작 시: 저장된 코드 자동 검증
     LaunchedEffect(Unit) {
         val stored = DeviceAuth.getStoredLicense(context)
-        when {
-            stored == null -> state = AuthState.NeedCode
-            DeviceAuth.isAdminCode(stored) -> state = AuthState.Admin
-            else -> validate(stored)
-        }
+        if (stored != null) validate(stored)
+        else state = AuthState.NeedCode
     }
 
-    // 포그라운드 복귀 시마다 재검증 (관리자/일반 모두)
+    // 포그라운드 복귀 시마다 재검증
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
@@ -143,15 +130,6 @@ private fun AuthGate(content: @Composable () -> Unit) {
                 CircularProgressIndicator()
             }
         }
-        AuthState.Admin -> AdminScreen(
-            onLogout = {
-                DeviceAuth.clearLicense(context)
-                inputError = null
-                state = AuthState.NeedCode
-            },
-            onUseApp = { state = AuthState.AdminAllowed }
-        )
-        AuthState.AdminAllowed -> content()
         AuthState.Allowed -> content()
 
         AuthState.NeedCode -> LicenseInputScreen(

@@ -1,16 +1,14 @@
 package com.callbacksms.app.auth
 
 import android.content.Context
+import android.os.Build
 import android.provider.Settings
 import org.json.JSONObject
 import javax.net.ssl.HttpsURLConnection
 
 object DeviceAuth {
 
-    // ★ Firebase 콘솔 → Realtime Database → URL 복사 후 입력
     const val FIREBASE_DB_URL = "https://callback-fc822-default-rtdb.asia-southeast1.firebasedatabase.app"
-
-    // ★ 관리자 전용 코드 — 원하는 값으로 변경 후 재빌드
     const val ADMIN_CODE = "482655"
 
     private const val PREF_NAME = "device_auth"
@@ -43,6 +41,7 @@ object DeviceAuth {
     }
 
     fun validate(context: Context, licenseKey: String, onResult: (Result) -> Unit) {
+        if (isAdminCode(licenseKey)) { onResult(Result.Allowed); return }
         if (!isConfigured()) { onResult(Result.Allowed); return }
 
         val key = licenseKey.uppercase().trim()
@@ -69,8 +68,14 @@ object DeviceAuth {
                         !alreadyRegistered && deviceCount >= maxDevices ->
                             Result.Denied("이 코드는 최대 ${maxDevices}대까지 사용 가능합니다\n(현재 ${deviceCount}대 등록됨)")
                         else -> {
-                            if (!alreadyRegistered)
-                                httpPut("$FIREBASE_DB_URL/licenses/$key/devices/$deviceId.json", "true")
+                            if (!alreadyRegistered) {
+                                // 기기 정보 포함해서 등록
+                                val deviceInfo = JSONObject().apply {
+                                    put("model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                                    put("registeredAt", System.currentTimeMillis())
+                                }.toString()
+                                httpPut("$FIREBASE_DB_URL/licenses/$key/devices/$deviceId.json", deviceInfo)
+                            }
                             Result.Allowed
                         }
                     }
@@ -84,12 +89,19 @@ object DeviceAuth {
 
     // ─── 관리자용 CRUD ───────────────────────────────────────────────
 
+    data class DeviceEntry(
+        val id: String,
+        val model: String,
+        val registeredAt: Long
+    )
+
     data class LicenseInfo(
         val code: String,
         val active: Boolean,
         val maxDevices: Int,
         val note: String,
-        val deviceCount: Int
+        val deviceCount: Int,
+        val devices: List<DeviceEntry>
     )
 
     fun getAllLicenses(onResult: (List<LicenseInfo>?) -> Unit) {
@@ -103,12 +115,24 @@ object DeviceAuth {
                         val obj = JSONObject(json)
                         obj.keys().asSequence().map { key ->
                             val item = obj.getJSONObject(key)
+                            val devicesObj = item.optJSONObject("devices")
+                            val deviceList = mutableListOf<DeviceEntry>()
+                            devicesObj?.keys()?.forEach { deviceId ->
+                                val v = devicesObj.opt(deviceId)
+                                val (model, registeredAt) = if (v is JSONObject) {
+                                    v.optString("model", "") to v.optLong("registeredAt", 0)
+                                } else {
+                                    "" to 0L
+                                }
+                                deviceList.add(DeviceEntry(deviceId, model, registeredAt))
+                            }
                             LicenseInfo(
                                 code = key,
                                 active = item.optBoolean("active", false),
                                 maxDevices = item.optInt("maxDevices", 1),
                                 note = item.optString("note", ""),
-                                deviceCount = item.optJSONObject("devices")?.length() ?: 0
+                                deviceCount = deviceList.size,
+                                devices = deviceList.sortedBy { it.registeredAt }
                             )
                         }.sortedBy { it.code }.toList()
                     }
@@ -153,6 +177,16 @@ object DeviceAuth {
         }.start()
     }
 
+    fun removeDevice(licenseCode: String, deviceId: String, onResult: (Boolean) -> Unit) {
+        Thread {
+            val result = try {
+                httpDelete("$FIREBASE_DB_URL/licenses/$licenseCode/devices/$deviceId.json")
+                true
+            } catch (_: Exception) { false }
+            post { onResult(result) }
+        }.start()
+    }
+
     // ─── HTTP 헬퍼 ───────────────────────────────────────────────────
 
     private fun post(block: () -> Unit) {
@@ -187,7 +221,6 @@ object DeviceAuth {
         }
     }
 
-    // Firebase REST는 POST + X-HTTP-Method-Override 로 PATCH 구현
     private fun httpPatch(url: String, body: String) {
         val conn = java.net.URL(url).openConnection() as HttpsURLConnection
         try {

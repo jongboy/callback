@@ -2,6 +2,7 @@ package com.callbacksms.app.ui.screen
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -11,21 +12,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.callbacksms.app.auth.DeviceAuth
 import com.callbacksms.app.data.model.ExcludedNumber
 import com.callbacksms.app.viewmodel.MainViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val settings = state.settings
     val excludedNumbers = state.excludedNumbers
     var showHourPicker by remember { mutableStateOf<String?>(null) }
     var minDurationInput by remember { mutableStateOf(settings.minCallDuration.toString()) }
     var showAddExclusionDialog by remember { mutableStateOf(false) }
+
+    val licenseKey = remember { DeviceAuth.getStoredLicense(context) }
+    val isAdmin = licenseKey != null && DeviceAuth.isAdminCode(licenseKey)
 
     LaunchedEffect(settings.minCallDuration) {
         minDurationInput = settings.minCallDuration.toString()
@@ -246,9 +255,6 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
 
             // ── 라이선스
             if (DeviceAuth.isConfigured()) {
-                val context = LocalContext.current
-                val licenseKey = remember { DeviceAuth.getStoredLicense(context) }
-
                 SectionHeader("라이선스", Icons.Default.VpnKey)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -256,8 +262,15 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         InfoRow("코드", licenseKey ?: "미입력")
+                        if (isAdmin) InfoRow("권한", "관리자")
                     }
                 }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            // ── 라이선스 관리 (관리자만)
+            if (isAdmin) {
+                AdminLicenseSection()
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             }
 
@@ -301,6 +314,254 @@ fun SettingsScreen(viewModel: MainViewModel, paddingValues: PaddingValues) {
         )
     }
 }
+
+// ── 관리자 라이선스 관리 섹션 ─────────────────────────────────────
+
+@Composable
+private fun AdminLicenseSection() {
+    var licenses by remember { mutableStateOf<List<DeviceAuth.LicenseInfo>?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<String?>(null) }
+    var removeDeviceTarget by remember { mutableStateOf<Pair<String, String>?>(null) } // licenseCode to deviceId
+
+    LaunchedEffect(refreshKey) {
+        isLoading = true
+        DeviceAuth.getAllLicenses { result ->
+            licenses = result
+            isLoading = false
+        }
+    }
+
+    SectionHeader("라이선스 관리", Icons.Default.VpnKey)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (isLoading) {
+                CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            } else if (licenses == null) {
+                Text("불러오기 실패", color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { refreshKey++ }) { Text("다시 시도") }
+            } else if (licenses!!.isEmpty()) {
+                Text("등록된 코드 없음",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                licenses!!.forEach { license ->
+                    LicenseRow(
+                        license = license,
+                        onToggleActive = { active ->
+                            DeviceAuth.setLicenseActive(license.code, active) { if (it) refreshKey++ }
+                        },
+                        onDelete = { deleteTarget = license.code },
+                        onRemoveDevice = { deviceId -> removeDeviceTarget = Pair(license.code, deviceId) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+
+            OutlinedButton(
+                onClick = { showAddDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("코드 추가")
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddLicenseDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { code, maxDevices, note ->
+                showAddDialog = false
+                DeviceAuth.createLicense(code, maxDevices, note) { if (it) refreshKey++ }
+            }
+        )
+    }
+
+    deleteTarget?.let { code ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("삭제 확인") },
+            text = { Text("'$code' 코드를 삭제하면 해당 기기들은 즉시 사용 불가입니다.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    DeviceAuth.deleteLicense(code) { if (it) refreshKey++ }
+                    deleteTarget = null
+                }) { Text("삭제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("취소") }
+            }
+        )
+    }
+
+    removeDeviceTarget?.let { (licenseCode, deviceId) ->
+        AlertDialog(
+            onDismissRequest = { removeDeviceTarget = null },
+            title = { Text("기기 등록 해제") },
+            text = { Text("이 기기의 라이선스를 해제하면 해당 기기에서 앱을 사용할 수 없게 됩니다.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    DeviceAuth.removeDevice(licenseCode, deviceId) { if (it) refreshKey++ }
+                    removeDeviceTarget = null
+                }) { Text("해제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeDeviceTarget = null }) { Text("취소") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun LicenseRow(
+    license: DeviceAuth.LicenseInfo,
+    onToggleActive: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+    onRemoveDevice: (deviceId: String) -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("yy.MM.dd", Locale.KOREAN) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // 코드명 + 활성 스위치
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    license.code,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+                if (license.note.isNotBlank()) {
+                    Text(license.note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    "기기 ${license.deviceCount} / ${license.maxDevices}대",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (license.deviceCount >= license.maxDevices)
+                        MaterialTheme.colorScheme.error
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = license.active, onCheckedChange = onToggleActive)
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Delete, "삭제",
+                    Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        // 등록된 기기 목록
+        license.devices.forEach { device ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.PhoneAndroid, null,
+                    Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(6.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        device.model.ifBlank { "알 수 없는 기기" },
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (device.registeredAt > 0) {
+                        Text(
+                            "등록일: ${dateFormat.format(Date(device.registeredAt))}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = { onRemoveDevice(device.id) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.Close, "기기 해제",
+                        Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddLicenseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (code: String, maxDevices: Int, note: String) -> Unit
+) {
+    var code by remember { mutableStateOf("") }
+    var maxDevicesText by remember { mutableStateOf("1") }
+    var note by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("코드 추가") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.uppercase().trim() },
+                    label = { Text("코드") },
+                    placeholder = { Text("예: ABC1234") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace)
+                )
+                OutlinedTextField(
+                    value = maxDevicesText,
+                    onValueChange = { if (it.all(Char::isDigit) && it.length <= 2) maxDevicesText = it },
+                    label = { Text("최대 기기 수") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("메모 (선택)") },
+                    placeholder = { Text("예: 홍길동") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val devices = maxDevicesText.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                    onConfirm(code, devices, note.trim())
+                },
+                enabled = code.isNotBlank()
+            ) { Text("추가") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소") }
+        }
+    )
+}
+
+// ── 공통 컴포넌트 ─────────────────────────────────────────────────
 
 @Composable
 private fun SectionHeader(title: String, icon: ImageVector) {
