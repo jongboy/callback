@@ -1,17 +1,21 @@
 package com.callbacksms.app.service
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
-import android.telephony.SmsManager
 import androidx.core.content.FileProvider
+import com.google.android.mms.MMSPart
+import com.klinker.android.send_message.Transaction
 import java.io.ByteArrayOutputStream
 import java.io.File
 
 object MmsSender {
+    private const val IMAGE_NAME = "image_0.jpg"
+    private const val TEXT_NAME = "text_0.txt"
 
     fun send(context: Context, to: String, text: String, imagePath: String): Pair<Boolean, String?> {
         return try {
@@ -23,7 +27,7 @@ object MmsSender {
             val imageBytes = compressToJpeg(bitmap)
             bitmap.recycle()
 
-            val pdu = MmsPduBuilder.buildImageTextPdu(to, text, imageBytes)
+            val pdu = buildPdu(context, to, text, imageBytes)
             val tmpFile = File(context.cacheDir, "mms_${System.currentTimeMillis()}.mms")
             tmpFile.writeBytes(pdu)
 
@@ -31,12 +35,60 @@ object MmsSender {
                 context, "${context.packageName}.fileprovider", tmpFile
             )
             grantUriToTelephony(context, uri)
-            getSmsManager(context).sendMultimediaMessage(context, uri, null, null, null)
+            SmsManagerCompat.get().sendMultimediaMessage(
+                context,
+                uri,
+                null,
+                null,
+                buildSentIntent(context, to, text, tmpFile)
+            )
 
             Pair(true, null)
         } catch (e: Exception) {
             Pair(false, "${e.javaClass.simpleName}: ${e.message}")
         }
+    }
+
+    private fun buildPdu(context: Context, to: String, text: String, imageBytes: ByteArray): ByteArray {
+        val imagePart = MMSPart().apply {
+            Name = IMAGE_NAME
+            MimeType = "image/jpeg"
+            Data = imageBytes
+        }
+        val textPart = MMSPart().apply {
+            Name = TEXT_NAME
+            MimeType = "text/plain"
+            Data = text.toByteArray(Charsets.UTF_8)
+        }
+
+        return Transaction.getBytes(
+            context,
+            false,
+            to,
+            arrayOf(to),
+            arrayOf(imagePart, textPart),
+            null
+        ).bytes
+    }
+
+    private fun buildSentIntent(
+        context: Context,
+        to: String,
+        text: String,
+        pduFile: File
+    ): PendingIntent {
+        val intent = Intent(context, MmsSendResultReceiver::class.java).apply {
+            action = MmsSendResultReceiver.ACTION_MMS_SENT
+            putExtra(MmsSendResultReceiver.EXTRA_TO, to)
+            putExtra(MmsSendResultReceiver.EXTRA_TEXT, text)
+            putExtra(MmsSendResultReceiver.EXTRA_FILE_PATH, pduFile.absolutePath)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            pduFile.name.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun compressToJpeg(bitmap: Bitmap): ByteArray {
@@ -89,12 +141,4 @@ object MmsSender {
             }
         }
     }
-
-    @Suppress("DEPRECATION")
-    private fun getSmsManager(context: Context): SmsManager =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            context.getSystemService(SmsManager::class.java)
-        } else {
-            SmsManager.getDefault()
-        }
 }

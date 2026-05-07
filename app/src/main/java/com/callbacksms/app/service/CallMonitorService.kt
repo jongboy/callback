@@ -247,13 +247,7 @@ class CallMonitorService : Service() {
         } catch (e: Exception) { null }
     }
 
-    private fun getSmsManager(): android.telephony.SmsManager =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            getSystemService(android.telephony.SmsManager::class.java)
-        else {
-            @Suppress("DEPRECATION")
-            android.telephony.SmsManager.getDefault()
-        }
+    private fun getSmsManager(): android.telephony.SmsManager = SmsManagerCompat.get()
 
     private suspend fun sendSms(
         phoneNumber: String,
